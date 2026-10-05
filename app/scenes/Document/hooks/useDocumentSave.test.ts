@@ -1,4 +1,7 @@
-import { shouldAutoDeleteDraftOnUnmount } from "./useDocumentSave";
+import {
+  deferUnlessRemounted,
+  shouldAutoDeleteDraftOnUnmount,
+} from "./useDocumentSave";
 
 describe("shouldAutoDeleteDraftOnUnmount", () => {
   const baseOptions = {
@@ -27,5 +30,33 @@ describe("shouldAutoDeleteDraftOnUnmount", () => {
         isEditorEmpty: true,
       })
     ).toBe(true);
+  });
+});
+
+describe("deferUnlessRemounted", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("runs the action once the delay has elapsed", () => {
+    const action = vi.fn();
+    deferUnlessRemounted(action);
+
+    expect(action).not.toHaveBeenCalled();
+    vi.runAllTimers();
+    expect(action).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not run the action when cancelled before the delay", () => {
+    const action = vi.fn();
+    const cancel = deferUnlessRemounted(action);
+
+    cancel();
+    vi.runAllTimers();
+    expect(action).not.toHaveBeenCalled();
   });
 });
