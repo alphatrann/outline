@@ -82,6 +82,18 @@ export function shouldAutoDeleteDraftOnUnmount({
 }
 
 /**
+ * Defers an action to the next task so that it can be cancelled if the
+ * component remounts immediately, as React StrictMode does in development.
+ *
+ * @param action the action to run once the delay has elapsed.
+ * @returns a function that cancels the action if it has not yet run.
+ */
+export function deferUnlessRemounted(action: () => void) {
+  const timeout = setTimeout(action, 0);
+  return () => clearTimeout(timeout);
+}
+
+/**
  * Hook that encapsulates save, autosave, dirty-tracking, and template
  * insertion logic for the document editor scene.
  *
@@ -338,9 +350,18 @@ export function useDocumentSave({
   }, [readOnly, updateIsDirty]);
 
   // Auto-delete/auto-save on unmount + debounce cleanup
-  useEffect(
-    () => () => {
+  const pendingDeleteRef = useRef<{ cancel?: () => void }>({});
+  useEffect(() => {
+    const pendingDelete = pendingDeleteRef.current;
+
+    // A remount straight after unmount, as in StrictMode, is not the user leaving.
+    pendingDelete.cancel?.();
+    pendingDelete.cancel = undefined;
+
+    return () => {
       autosave.cancel();
+      // The latest editor state is wanted here, not the value at mount.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
       const currentDoc = editorRef.current?.view.state.doc;
       const isEditorEmpty =
         !currentDoc || ProsemirrorHelper.isEmpty(currentDoc);
@@ -357,16 +378,18 @@ export function useDocumentSave({
           isPersistedOnce: document.isPersistedOnce,
         })
       ) {
-        void document.delete();
+        pendingDelete.cancel = deferUnlessRemounted(() => {
+          pendingDelete.cancel = undefined;
+          void document.delete();
+        });
       } else if (document.isDirty()) {
         void document.save(undefined, {
           autosave: true,
         });
       }
-    },
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
-  );
+  }, []);
 
   return {
     isUploading,
