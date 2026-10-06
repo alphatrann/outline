@@ -56,6 +56,8 @@ const aliasesAsArray = Object.entries(aliases).map(([find, replacement]) => ({
 
 const fileMockAlias = { find: /\.(gif|ttf|eot|svg)$/, replacement: fileMock };
 
+const integrationTestFiles = ["server/**/*.integration.test.{ts,tsx}"];
+
 const serverTestFiles = [
   "server/**/*.test.{ts,tsx}",
   "plugins/**/*.test.{ts,tsx}",
@@ -102,6 +104,7 @@ export default defineConfig({
           ...serverTestConfig,
           name: "server",
           include: isolatedServerTestFiles,
+          exclude: [...configDefaults.exclude, ...integrationTestFiles],
         },
       },
       {
@@ -110,8 +113,33 @@ export default defineConfig({
           ...serverTestConfig,
           name: "server-shared",
           include: serverTestFiles,
-          exclude: [...configDefaults.exclude, ...isolatedServerTestFiles],
+          exclude: [
+            ...configDefaults.exclude,
+            ...isolatedServerTestFiles,
+            ...integrationTestFiles,
+          ],
           isolate: false,
+        },
+      },
+      {
+        // Runs against real Postgres and Redis containers, so it needs Docker.
+        // Files run serially as they share the containers and wipe them between
+        // tests.
+        ...sharedConfig,
+        test: {
+          name: "server-integration",
+          globals: true,
+          environment: "node" as const,
+          include: integrationTestFiles,
+          setupFiles: [
+            "./__mocks__/console.js",
+            "./server/test/setupIntegration.ts",
+            "./server/test/setup.ts",
+          ],
+          globalSetup: ["./server/test/globalSetupContainers.ts"],
+          fileParallelism: false,
+          testTimeout: 30000,
+          hookTimeout: 120000,
         },
       },
       {
