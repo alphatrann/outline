@@ -26,6 +26,7 @@
   <tr><td>Yarn</td><td><code>4.18.1</code> (via Corepack)</td></tr>
   <tr><td>PostgreSQL</td><td><code>17</code> (<code>postgres:17</code> in <code>docker-compose.yml</code>)</td></tr>
   <tr><td>Redis</td><td><code>8</code> (<code>redis:8</code> in <code>docker-compose.yml</code>)</td></tr>
+  <tr><td>Docker</td><td>Required for <code>docker compose</code> and <code>yarn test:integration</code></td></tr>
   <tr><td>Docker Compose</td><td>v2 (<code>docker compose</code>)</td></tr>
 </table>
 
@@ -79,6 +80,18 @@ FILE_STORAGE_LOCAL_ROOT_DIR=/absolute/path/to/outline/data</pre>
 <h2>5. Tests</h2>
 <pre>make test                          # recreates test DB, runs all tests
 yarn test path/to/file.test.ts     # single file</pre>
+<p>These need Postgres on <code>127.0.0.1:5432</code> (see <code>.env.test</code>), for example the compose one.</p>
+
+<h3>Integration tests (Testcontainers)</h3>
+<p>Files named <code>*.integration.test.ts</code> run in their own Vitest project against real Postgres and Redis. Nothing is mocked and no local services are needed, only a running Docker.</p>
+<pre>yarn test:integration</pre>
+<ul>
+  <li>Disposable <code>postgres:17</code> and <code>redis:8</code> containers start once per run on random ports, and the migrations are applied. They are removed afterwards. Your compose containers are not used.</li>
+  <li>All tables (except <code>SequelizeMeta</code>) and Redis are wiped before each test, so files run one at a time.</li>
+  <li>The first run pulls the images and is slow.</li>
+  <li>If <code>DOCKER_HOST</code> is unset, the harness uses the endpoint of the active Docker context (<code>docker context show</code>), so Colima, Rancher Desktop and Docker Desktop work without setup. Set <code>DOCKER_HOST</code> yourself to override.</li>
+  <li><code>yarn test:server</code> does not include these tests, so it does not need Docker.</li>
+</ul>
 
 <h2>6. Known issues</h2>
 <ul>
@@ -88,6 +101,7 @@ yarn test path/to/file.test.ts     # single file</pre>
   <li><code>corepack enable</code> fails with <code>EACCES</code> on <code>/usr/local/bin</code>: use <code>--install-directory ~/.local/bin</code>.</li>
   <li><code>make build</code> fails: <code>docker-compose.yml</code> has no <code>outline</code> service.</li>
   <li>Ports 5432 / 6379 busy: stop the local service or change the ports in <code>docker-compose.yml</code>.</li>
+  <li><code>yarn test:integration</code> fails with <code>Could not find a working container runtime strategy</code>: Docker is not running, or <code>docker context show</code> points at a runtime that is stopped. Start it (for Colima: <code>colima start</code>) and check that <code>docker ps</code> works.</li>
   <li>Certificate warning: re-run <code>yarn install-local-ssl</code>.</li>
 </ul>
 
@@ -103,7 +117,7 @@ yarn test path/to/file.test.ts     # single file</pre>
   <li><span class="todo">TO VERIFY</span> Full setup run end to end (Docker was not running when this was written).</li>
   <li><span class="todo">TO VERIFY</span> Postgres 17 and Redis 8 work with this commit.</li>
   <li><span class="todo">TO VERIFY</span> Sign-in without SMTP in dev.</li>
-  <li><span class="todo">TO VERIFY</span> Linux and Windows.</li>
+  <li><span class="todo">TO VERIFY</span> Linux and Windows (including <code>yarn test:integration</code>; the Windows path, a shell for <code>yarn.cmd</code>, is untested).</li>
 </ul>
 </body>
 </html>

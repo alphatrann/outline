@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { promisify } from "node:util";
 import { PostgreSqlContainer } from "@testcontainers/postgresql";
 import { RedisContainer } from "@testcontainers/redis";
@@ -23,6 +23,8 @@ export interface TestContainers {
  * @throws if Docker is unavailable or the migrations fail.
  */
 export async function startContainers(): Promise<TestContainers> {
+  configureDockerHost();
+
   const [postgres, redis] = await Promise.all([
     new PostgreSqlContainer("postgres:17")
       .withDatabase("outline-test")
@@ -50,6 +52,40 @@ export async function startContainers(): Promise<TestContainers> {
 }
 
 /**
+ * Testcontainers does not read Docker CLI contexts, so on runtimes that do not
+ * expose /var/run/docker.sock (Colima, Rancher Desktop, rootless Docker) it
+ * cannot find the daemon. When DOCKER_HOST is unset, point it at the endpoint
+ * of the active Docker context instead, as `docker ps` would. Values already
+ * set in the environment always win, and non-unix endpoints, such as the named
+ * pipe used by Docker Desktop on Windows, are left to Testcontainers.
+ */
+function configureDockerHost() {
+  if (process.env.DOCKER_HOST) {
+    return;
+  }
+
+  try {
+    const host = execFileSync(
+      "docker",
+      ["context", "inspect", "--format", "{{.Endpoints.docker.Host}}"],
+      { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }
+    ).trim();
+
+    if (!host.startsWith("unix://") || host === "unix:///var/run/docker.sock") {
+      return;
+    }
+
+    process.env.DOCKER_HOST = host;
+    // The path the daemon, not this machine, sees the socket at; it is mounted
+    // into the Ryuk cleanup container.
+    process.env.TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE ??=
+      "/var/run/docker.sock";
+  } catch {
+    // No Docker CLI or context; let Testcontainers report what it can't find.
+  }
+}
+
+/**
  * Runs the Sequelize migrations against the given database, the same way
  * `yarn db:migrate` does for a developer.
  *
@@ -57,6 +93,8 @@ export async function startContainers(): Promise<TestContainers> {
  */
 async function migrate(databaseUrl: string) {
   await execFileAsync("yarn", ["sequelize", "db:migrate"], {
+    // yarn is a .cmd shim on Windows, which cannot be spawned without a shell.
+    shell: process.platform === "win32",
     env: {
       ...process.env,
       NODE_ENV: "test",
