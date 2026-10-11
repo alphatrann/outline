@@ -1,11 +1,11 @@
 # Sprint 1 — Deliverable B: Data Flows (sketches)
 
-Container diagram source: `diagrams/container.mmd`. Component diagram source: `diagrams/component.mmd` (C4 levels 1–2: external actor + API container internals + data containers; both Mermaid `flowchart TB`, render on GitHub).
+The Mermaid blocks below are the single source of truth for the diagrams (they render in PR review; no standalone copies are kept). Container + component views are C4-style sketches, not strict C4.
 
 ```mermaid
 flowchart TB
   Client["Web client (out of scope, API caller)"]
-  API["Koa API<br/>routes/api + middlewares<br/>auth, pagination, apiErrorHandler"]
+  API["Koa API<br/>routes/api<br/>+ server/middlewares + routes/api/middlewares"]
   Cmd["Commands<br/>documentCreator/Updater/Mover<br/>shareLoader, teamProvisioner"]
   Pol["Policies (cancan)<br/>document/collection/revision/share"]
   Pres["Presenters<br/>document/collection/revision/share"]
@@ -32,7 +32,7 @@ flowchart TB
     UI["React/MobX scenes"]
   end
   subgraph API["C4 container: Koa API service"]
-    MW["Middlewares<br/>authentication, pagination,<br/>apiErrorHandler"]
+    MW["Middlewares<br/>server/middlewares (authentication)<br/>routes/api/middlewares (pagination, apiErrorHandler)"]
     Router["Routers<br/>documents / collections<br/>revisions / searches / shares"]
     Pol["Policies (cancan)<br/>document / collection<br/>revision / share / team"]
     Cmd["Commands<br/>documentCreator / Updater<br/>Mover / Loader / shareLoader"]
