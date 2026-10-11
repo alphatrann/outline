@@ -1,0 +1,20 @@
+flowchart TB
+  Client["Web client (out of scope, API caller)"]
+  API["Koa API<br/>routes/api + middlewares<br/>auth, pagination, apiErrorHandler"]
+  Cmd["Commands<br/>documentCreator/Updater/Mover<br/>shareLoader, teamProvisioner"]
+  Pol["Policies (cancan)<br/>document/collection/revision/share"]
+  Pres["Presenters<br/>document/collection/revision/share"]
+  PG[("Postgres<br/>documents incl. searchVector<br/>collections, revisions, shares")]
+  Redis[("Redis + Bull<br/>events, debounce,<br/>revisions, search index")]
+  Search["Search provider<br/>Postgres FTS (default)<br/>plugins/search-postgres"]
+
+  Client -->|"POST /api/*"| API
+  API --> Pol
+  Pol -->|"allow"| Cmd
+  Cmd --> PG
+  Cmd -->|"insertEvent"| Redis
+  Redis -->|"debounced update"| Search
+  Cmd --> Pres
+  Pres --> API
+  API -->|"JSON"| Client
+  Search --> PG
