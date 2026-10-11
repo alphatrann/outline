@@ -75,7 +75,7 @@ sequenceDiagram
   R->>M: write user_permissions / group_permissions
 ```
 
-Key rule: shared (`read/read_write`) open to team; private (`permission=null`) and guests require explicit row. See `architecture.md` Flow 1.
+Key rule: shared (`read/read_write`) open to team; private (`permission=null`) and guests require explicit row. See `ARCHITECTURE.md` Flow 1.
 
 ### 2. Document lifecycle
 
