@@ -5,6 +5,8 @@ Baseline: pinned SHA `05ef55e38` present in history. Drift `05ef55e38..0893a08` 
 
 Out of scope for Sprint 1: OAuth/OIDC/email login, attachments/MinIO, realtime collaboration (Y.js), UI.
 
+Note: these 4 new `.md` files are an intentional exception to the `AGENTS.md` "do not create new markdown files" guideline — Issue #2 explicitly requires docs deliverables A, B (sketches), D (draft).
+
 ## 1. Monorepo layout
 
 | Directory | Responsibility | Key entries |
@@ -16,7 +18,8 @@ Out of scope for Sprint 1: OAuth/OIDC/email login, attachments/MinIO, realtime c
 | `server/policies/` | cancan authorization, one file per model | `document.ts`, `collection.ts`, `revision.ts`, `share.ts`, `searchQuery.ts`, `team.ts` |
 | `server/presenters/` | Backend → frontend JSON boundary | `document.ts`, `collection.ts`, `revision.ts`, `share.ts` |
 | `server/queues/` | Bull + Redis async events | `processors/RevisionsProcessor.ts`, `DebounceProcessor.ts`, `SearchIndexProcessor.ts`, `tasks/DocumentUpdateTextTask.ts` |
-| `server/middlewares/` | Koa auth, pagination, error handling | `authentication.ts`, `apiErrorHandler.ts` |
+| `server/middlewares/` | Koa request pipeline | `authentication.ts`, `apiContext.ts`, `rateLimiter.ts`, … (app-wide) |
+| `server/routes/api/middlewares/` | API-layer helpers | `pagination.ts`, `editor.ts`, `apiResponse.ts`, `apiErrorHandler.ts` |
 | `plugins/search-postgres/server/` | Default search backend | `PostgresSearchProvider.ts` (Postgres FTS) |
 | `shared/` | Shared types + editor (Prosemirror) | `types.ts` (`CollectionPermission`, `UserRole`) |
 
@@ -41,7 +44,7 @@ Backend contract: `docs/ARCHITECTURE.md`. API routes thin; logic lives in `comma
 | Commands | `server/commands/documentCreator.ts` (+ `authorizeDocumentCreate/Publish`), `documentUpdater.ts` (row-lock + `DocumentConflictError`), `documentMover.ts` (collection `documentStructure` index fix), `documentLoader.ts` (authz read/restore), `documentRestorer.ts`, `documentPermanentDeleter.ts` | Build/save/publish/move/restore/delete; title `previousTitles`, `collaboratorIds`, `revisionCount++` in hooks |
 | Model | `server/models/Document.ts` (`paranoid`, `defaultScope: publishedAt!=null`) | Fields `urlId/title/content(JSONB)/state(BLOB Yjs)/collectionId/parentDocumentId/publishedAt/archivedAt`; `publish/unpublishWithCtx/archiveWithCtx/restoreTo/destroyWithCtx`; CTE child/parent guards |
 | Policy | `server/policies/document.ts` | `createDocument@Team`, `read/update/publish/move/archive/...` gated on draft/active + membership RW/Admin or `collection.updateDocument` |
-| Presenter | `server/presenters/document.ts` | `presentDocument(isPublic, shareId)` strips private fields for public shares |
+| Presenter | `server/presenters/document.ts` | `presentDocument(ctx, document, options)` with `options.isPublic` / `options.shareId`; strips private fields for public shares |
 | Events | `Model.saveWithCtx → documents.create/update/delete/publish/archive/move/...`, `RevisionsProcessor`, `SearchIndexProcessor` | Async revision + search indexing |
 
 ### Flow 3 — Revisions
@@ -59,5 +62,5 @@ Backend contract: `docs/ARCHITECTURE.md`. API routes thin; logic lives in `comma
 |---|---|---|
 | Routes | `server/routes/api/documents/documents.ts` (`search`, `search_titles`), `server/routes/api/searches/searches.ts` (`list/update/delete`), `server/routes/api/shares/shares.ts` (`info/list/create/update/revoke/sitemap/subscribe`) | Public search via `shareId`; own-query history in `searches.*` |
 | Models | `server/models/SearchQuery.ts` (`query/results/duration/score/source`), `server/models/Share.ts` (UUID PK, `urlId` slug, `published/revokedAt/domain/includeChildDocuments`) | `SearchQuery.record()` collapses as-you-type (30s window); `Share.canonicalUrl` |
-| Search backend | `plugins/search-postgres/server/PostgresSearchProvider.ts`, `server/utils/SearchProviderManager.ts`, migrations `documents_search_trigger()` | Postgres `tsvector`: `title(A) + previousTitles(C) + substring(text,1,500K)(D)`; `searchVector @@ to_tsquery`, `ts_rank * popularity boost`; `SearchIndexProcessor` no-op for postgres |
+| Search backend | `plugins/search-postgres/server/PostgresSearchProvider.ts`, `server/utils/SearchProviderManager.ts`, migrations `documents_search_trigger()` | Postgres `tsvector`: `title(A) + previousTitles(C) + substring(text,1,1000000)(D)`, with a `substring(text,1,500000)` fallback for oversized documents (`program_limit_exceeded`); `searchVector @@ to_tsquery`, `ts_rank * popularity boost`; `SearchIndexProcessor` no-op for postgres |
 | Policy/loader | `server/policies/share.ts`, `searchQuery.ts` (owner-only), `server/commands/shareLoader.ts` (`loadPublicShare`, `loadShareWithParent`) | Token = `Share.id`; slug needs `teamId`; checks `published`, `revokedAt null`, `team.sharing && collection.sharing`, archived guards |
