@@ -1,6 +1,6 @@
 # Sprint 1 — Deliverable B: Data Flows (sketches)
 
-Source file for container diagram: `diagrams/container.mmd` (Mermaid `flowchart TB`, renders on GitHub).
+Container diagram source: `diagrams/container.mmd`. Component diagram source: `diagrams/component.mmd` (C4 levels 1–2: external actor + API container internals + data containers; both Mermaid `flowchart TB`, render on GitHub).
 
 ```mermaid
 flowchart TB
@@ -22,6 +22,40 @@ flowchart TB
   Pres --> API
   API -->|"JSON"| Client
   Search --> PG
+```
+
+### Component view (API internals)
+
+```mermaid
+flowchart TB
+  subgraph Client["Web client (C4: external actor, out of scope)"]
+    UI["React/MobX scenes"]
+  end
+  subgraph API["C4 container: Koa API service"]
+    MW["Middlewares<br/>authentication, pagination,<br/>apiErrorHandler"]
+    Router["Routers<br/>documents / collections<br/>revisions / searches / shares"]
+    Pol["Policies (cancan)<br/>document / collection<br/>revision / share / team"]
+    Cmd["Commands<br/>documentCreator / Updater<br/>Mover / Loader / shareLoader"]
+    Pres["Presenters<br/>document / collection<br/>revision / share"]
+    Proc["Queue processors<br/>Debounce / Revisions<br/>SearchIndex + tasks"]
+  end
+  subgraph Data["C4 containers: data + workers"]
+    PG[("PostgreSQL<br/>documents + searchVector tsvector<br/>collections, revisions, shares,<br/>user/group memberships")]
+    Redis[("Redis + Bull<br/>events, debounce,<br/>task queues")]
+    Search["Search provider<br/>Postgres FTS plugin<br/>ts_rank x popularity"]
+  end
+  UI -->|"POST /api/*"| MW
+  MW --> Router
+  Router --> Pol
+  Pol -->|"allow"| Cmd
+  Cmd --> PG
+  Cmd -->|"insertEvent"| Redis
+  Redis --> Proc
+  Proc -->|"createFromDocument"| PG
+  Proc --> Search
+  Search --> PG
+  Cmd --> Pres
+  Pres --> Router
 ```
 
 ## Flows in scope (4)

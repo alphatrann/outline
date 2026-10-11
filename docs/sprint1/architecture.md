@@ -1,7 +1,7 @@
 # Sprint 1 — Deliverable A: Architecture Map
 
 Pinned issue: [#2](https://github.com/alphatrann/outline/issues/2) — B Architecture and test design.
-Baseline: pinned SHA `05ef55e38` present in history; working HEAD `0893a08` (merge PR #6 sprint-1/env-setup, +3 commits ahead). All paths below verified at HEAD.
+Baseline: pinned SHA `05ef55e38` present in history. Drift `05ef55e38..0893a08` verified as dev-env/UI-only (`.env.development`, `.mcp.json`, `app/scenes/Document/hooks/useDocumentSave.*`, `docker-compose.yml`, `docs/ONBOARDING.html`, `package.json`) — none of the server modules below are touched, so this map holds at the pinned SHA. Branch rebased onto `origin/main` tip `6b95ce1` (PR #7 testcontainers harness, also additive under `server/test/` + `*.integration.test.ts`). All paths below verified at branch HEAD.
 
 Out of scope for Sprint 1: OAuth/OIDC/email login, attachments/MinIO, realtime collaboration (Y.js), UI.
 
