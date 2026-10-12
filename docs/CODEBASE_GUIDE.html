@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Outline – Codebase Guide</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1f2328; --muted: #656d76; --line: #d0d7de; --card: #f6f8fa;
+    --accent: #0969da; --code-bg: #eaeef2;
+    --person: #08427b; --person-fg: #ffffff;
+    --system: #1168bd; --system-fg: #ffffff;
+    --container: #438dd5; --container-fg: #ffffff;
+    --component: #85bbf0; --component-fg: #0b2540;
+    --external: #8b949e; --external-fg: #ffffff;
+    --arrow: #57606a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --line: #30363d; --card: #161b22;
+      --accent: #4493f8; --code-bg: #262c36;
+      --person: #1f4e8c; --system: #1f6feb; --container: #2f6db5; --component: #3a6ea8; --component-fg: #ffffff;
+      --external: #4b535d; --arrow: #9198a1;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 900px; margin: 0 auto; padding: 2rem 16px 4rem; }
+  h1 { font-size: 2rem; margin: 0 0 .25rem; }
+  h2 { font-size: 1.35rem; margin: 2.75rem 0 .25rem; }
+  h3 { font-size: 1.05rem; margin: 1.5rem 0 .4rem; }
+  .lead { color: var(--muted); margin: 0 0 1rem; }
+  .nav { display: flex; flex-wrap: wrap; gap: .5rem; margin: 1rem 0 0; padding: 0; list-style: none; }
+  .nav a { display: inline-block; padding: .25rem .7rem; border: 1px solid var(--line); border-radius: 999px; color: var(--fg); text-decoration: none; font-size: .9rem; }
+  .nav a:hover { border-color: var(--accent); color: var(--accent); }
+  a { color: var(--accent); }
+  code { background: var(--code-bg); border-radius: 5px; padding: .1em .35em; font: .9em ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 1rem; margin: .75rem 0; }
+  svg { display: block; width: 100%; height: auto; }
+  svg text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .person rect { fill: var(--person); } .person text { fill: var(--person-fg); }
+  .system rect { fill: var(--system); } .system text { fill: var(--system-fg); }
+  .container rect { fill: var(--container); } .container text { fill: var(--container-fg); }
+  .component rect { fill: var(--component); } .component text { fill: var(--component-fg); }
+  .external rect { fill: var(--external); } .external text { fill: var(--external-fg); }
+  .box rect { rx: 10; }
+  .t { font-size: 15px; font-weight: 650; text-anchor: middle; }
+  .s { font-size: 12px; text-anchor: middle; opacity: .9; }
+  .tag { font-size: 10px; text-anchor: middle; opacity: .75; letter-spacing: .04em; }
+  .edge { stroke: var(--arrow); stroke-width: 1.6; fill: none; marker-end: url(#arr); }
+  .lbl { font-size: 12px; fill: var(--muted); text-anchor: middle; paint-order: stroke; stroke: var(--card); stroke-width: 5px; stroke-linejoin: round; }
+  .boundary { fill: none; stroke: var(--arrow); stroke-width: 1.4; stroke-dasharray: 6 5; }
+  .bl { font-size: 12px; fill: var(--muted); font-weight: 600; }
+  .legend { display: flex; flex-wrap: wrap; gap: .4rem 1rem; font-size: .8rem; color: var(--muted); margin-top: .5rem; }
+  .legend i { display: inline-block; width: .8em; height: .8em; border-radius: 3px; margin-right: .35em; vertical-align: -1px; }
+  table { border-collapse: collapse; width: 100%; font-size: .92rem; margin: .5rem 0; }
+  th, td { border-bottom: 1px solid var(--line); padding: .4rem .6rem; text-align: left; vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; }
+  .where { margin-top: .75rem; }
+  .where > summary { cursor: pointer; font-weight: 600; color: var(--accent); }
+  .strip { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; margin: .5rem 0 .75rem; }
+  .step { background: var(--container); color: var(--container-fg); border-radius: 999px; padding: .3rem .85rem; font-size: .9rem; font-weight: 600; }
+  .arrow { color: var(--muted); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(380px, 100%), 1fr)); gap: .75rem; }
+  .grid .card { margin: 0; min-width: 0; }
+  code { overflow-wrap: anywhere; }
+  table { display: block; overflow-x: auto; }
+  ul, ol { padding-left: 1.3rem; margin: .4rem 0; }
+  li { margin: .2rem 0; }
+  .muted { color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Outline – Codebase Guide</h1>
+  <p class="lead">A quick map of the product, then where to read. Setup lives in <a href="ONBOARDING.html">ONBOARDING.html</a>.</p>
+  <ul class="nav">
+    <li><a href="#context">1 · Context</a></li>
+    <li><a href="#containers">2 · Containers</a></li>
+    <li><a href="#components">3 · Components</a></li>
+    <li><a href="#flows">4 · Flows</a></li>
+    <li><a href="#explore">5 · How to explore</a></li>
+    <li><a href="#tests">6 · Tests</a></li>
+  </ul>
+
+  <svg width="0" height="0" aria-hidden="true" style="position:absolute">
+    <defs>
+      <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#57606a"/>
+      </marker>
+    </defs>
+  </svg>
+
+  <!-- 1. CONTEXT -->
+  <h2 id="context">1 · Context <span class="muted">(who uses it)</span></h2>
+  <p class="lead">Outline is a shared knowledge base for teams.</p>
+  <div class="card">
+    <svg viewBox="0 0 800 380" role="img" aria-label="System context diagram: team members and guest readers use Outline, which relies on a sign-in and email provider and on file storage.">
+      <g class="box person"><rect x="60" y="20" width="180" height="76"/><text class="t" x="150" y="52">Team member</text><text class="s" x="150" y="72">Writes and organizes</text></g>
+      <g class="box person"><rect x="560" y="20" width="180" height="76"/><text class="t" x="650" y="52">Guest reader</text><text class="s" x="650" y="72">Reads shared pages</text></g>
+      <g class="box system"><rect x="270" y="150" width="260" height="90"/><text class="t" x="400" y="188">Outline</text><text class="s" x="400" y="210">Knowledge base</text></g>
+      <g class="box external"><rect x="60" y="290" width="180" height="70"/><text class="t" x="150" y="322">Sign-in and email</text><text class="s" x="150" y="342">External service</text></g>
+      <g class="box external"><rect x="560" y="290" width="180" height="70"/><text class="t" x="650" y="322">File storage</text><text class="s" x="650" y="342">External service</text></g>
+      <path class="edge" d="M170 96 L330 150"/><text class="lbl" x="215" y="116">uses</text>
+      <path class="edge" d="M630 96 L470 150"/><text class="lbl" x="590" y="116">views</text>
+      <path class="edge" d="M330 240 L170 290"/><text class="lbl" x="228" y="278">verifies</text>
+      <path class="edge" d="M470 240 L630 290"/><text class="lbl" x="575" y="278">keeps files</text>
+    </svg>
+    <div class="legend"><span><i style="background:var(--person)"></i>Person</span><span><i style="background:var(--system)"></i>This system</span><span><i style="background:var(--external)"></i>External</span></div>
+  </div>
+  <details class="where"><summary>Where to read</summary>
+    <table>
+      <tr><th>Box</th><th>Look in</th></tr>
+      <tr><td>Outline</td><td><code>app/</code> (web) · <code>server/</code> (backend) · <code>shared/</code> (both)</td></tr>
+      <tr><td>Sign-in and email</td><td><code>server/routes/auth</code> · <code>plugins/email</code> · <code>plugins/oidc</code></td></tr>
+      <tr><td>File storage</td><td><code>server/storage</code> · <code>plugins/storage</code></td></tr>
+    </table>
+  </details>
+
+  <!-- 2. CONTAINERS -->
+  <h2 id="containers">2 · Containers <span class="muted">(what runs)</span></h2>
+  <p class="lead">The pieces you start when you run the product.</p>
+  <div class="card">
+    <svg viewBox="0 0 800 400" role="img" aria-label="Container diagram: the web app talks to the API server, which uses the database, search and a job queue; background workers take jobs from the queue and update the database.">
+      <g class="box container"><rect x="320" y="20" width="160" height="70"/><text class="t" x="400" y="52">Web app</text><text class="s" x="400" y="72">What people see</text></g>
+      <g class="box container"><rect x="320" y="150" width="160" height="70"/><text class="t" x="400" y="182">API server</text><text class="s" x="400" y="202">Rules and access</text></g>
+      <g class="box container"><rect x="600" y="150" width="160" height="70"/><text class="t" x="680" y="182">Job queue</text><text class="s" x="680" y="202">Waiting tasks</text></g>
+      <g class="box container"><rect x="600" y="300" width="160" height="70"/><text class="t" x="680" y="332">Background workers</text><text class="s" x="680" y="352">Slow tasks</text></g>
+      <g class="box container"><rect x="320" y="300" width="160" height="70"/><text class="t" x="400" y="332">Database</text><text class="s" x="400" y="352">Source of truth</text></g>
+      <g class="box container"><rect x="40" y="300" width="160" height="70"/><text class="t" x="120" y="332">Search</text><text class="s" x="120" y="352">Finds pages</text></g>
+      <path class="edge" d="M400 90 L400 150"/><text class="lbl" x="400" y="125">asks</text>
+      <path class="edge" d="M400 220 L400 300"/><text class="lbl" x="400" y="266">saves</text>
+      <path class="edge" d="M480 185 L600 185"/><text class="lbl" x="540" y="177">queues</text>
+      <path class="edge" d="M680 220 L680 300"/><text class="lbl" x="680" y="266">hands over</text>
+      <path class="edge" d="M600 335 L480 335"/><text class="lbl" x="540" y="327">updates</text>
+      <path class="edge" d="M340 220 L170 300"/><text class="lbl" x="240" y="248">looks up</text>
+      <path class="edge" d="M320 335 L200 335"/><text class="lbl" x="260" y="327">feeds</text>
+    </svg>
+    <div class="legend"><span><i style="background:var(--container)"></i>Container</span></div>
+  </div>
+  <details class="where"><summary>Where to read</summary>
+    <table>
+      <tr><th>Box</th><th>Look in</th></tr>
+      <tr><td>Web app</td><td><code>app/</code> (<code>scenes/</code>, <code>stores/</code>)</td></tr>
+      <tr><td>API server</td><td><code>server/routes/api</code></td></tr>
+      <tr><td>Job queue</td><td><code>server/queues</code></td></tr>
+      <tr><td>Background workers</td><td><code>server/queues/processors</code> · <code>server/queues/tasks</code></td></tr>
+      <tr><td>Database</td><td><code>server/models</code> · <code>server/migrations</code></td></tr>
+      <tr><td>Search</td><td><code>plugins/search-postgres/server</code></td></tr>
+    </table>
+  </details>
+
+  <!-- 3. COMPONENTS -->
+  <h2 id="components">3 · Components <span class="muted">(inside the API server)</span></h2>
+  <p class="lead">Every request walks the same path.</p>
+  <div class="card">
+    <svg viewBox="0 0 800 340" role="img" aria-label="Component diagram of the API server: request checks, permissions, business actions and data models in a row; business actions also send results to response shaping and announce changes to events, which feed the job queue.">
+      <rect class="boundary" x="10" y="14" width="780" height="316" rx="14"/>
+      <text class="bl" x="26" y="36">API server</text>
+      <g class="box component"><rect x="30" y="70" width="150" height="70"/><text class="t" x="105" y="100">Request checks</text><text class="s" x="105" y="120">Who are you?</text></g>
+      <g class="box component"><rect x="230" y="70" width="150" height="70"/><text class="t" x="305" y="100">Permissions</text><text class="s" x="305" y="120">Are you allowed?</text></g>
+      <g class="box component"><rect x="430" y="70" width="150" height="70"/><text class="t" x="505" y="100">Actions</text><text class="s" x="505" y="120">Does the work</text></g>
+      <g class="box component"><rect x="630" y="70" width="140" height="70"/><text class="t" x="700" y="100">Data models</text><text class="s" x="700" y="120">Stored things</text></g>
+      <g class="box component"><rect x="230" y="220" width="150" height="70"/><text class="t" x="305" y="250">Response</text><text class="s" x="305" y="270">Shapes the answer</text></g>
+      <g class="box component"><rect x="430" y="220" width="150" height="70"/><text class="t" x="505" y="250">Events</text><text class="s" x="505" y="270">Announces changes</text></g>
+      <g class="box container"><rect x="630" y="220" width="140" height="70"/><text class="t" x="700" y="250">Job queue</text><text class="s" x="700" y="270">Outside this box</text></g>
+      <path class="edge" d="M180 105 L230 105"/>
+      <path class="edge" d="M380 105 L430 105"/>
+      <path class="edge" d="M580 105 L630 105"/>
+      <path class="edge" d="M470 140 L350 220"/><text class="lbl" x="395" y="172">result</text>
+      <path class="edge" d="M505 140 L505 220"/><text class="lbl" x="530" y="184">changed</text>
+      <path class="edge" d="M580 255 L630 255"/>
+    </svg>
+    <div class="legend"><span><i style="background:var(--component)"></i>Component</span><span><i style="background:var(--container)"></i>Container</span></div>
+  </div>
+  <details class="where"><summary>Where to read</summary>
+    <table>
+      <tr><th>Box</th><th>Look in</th></tr>
+      <tr><td>Request checks</td><td><code>server/middlewares</code> · <code>server/routes/api/middlewares</code></td></tr>
+      <tr><td>Permissions</td><td><code>server/policies</code></td></tr>
+      <tr><td>Actions</td><td><code>server/routes/api</code> (thin) · <code>server/commands</code> (multi-step)</td></tr>
+      <tr><td>Data models</td><td><code>server/models</code></td></tr>
+      <tr><td>Response</td><td><code>server/presenters</code></td></tr>
+      <tr><td>Events</td><td><code>server/models/Event.ts</code> · <code>server/queues</code></td></tr>
+    </table>
+  </details>
+
+  <!-- 4. FLOWS -->
+  <h2 id="flows">4 · The four flows <span class="muted">(what to understand)</span></h2>
+  <p class="lead">These are the areas covered by integration tests.</p>
+  <div class="grid">
+    <div class="card">
+      <h3>Access and permissions</h3>
+      <div class="strip"><span class="step">Sign in</span><span class="arrow">→</span><span class="step">Open collection</span><span class="arrow">→</span><span class="step">Check access</span><span class="arrow">→</span><span class="step">Share</span></div>
+      <ul>
+        <li>Private collection = explicit access only.</li>
+        <li>Guests always need explicit access.</li>
+        <li>Access comes from people or groups.</li>
+      </ul>
+      <p class="muted">Read: <code>server/policies/collection.ts</code> · <code>server/routes/api/collections</code></p>
+    </div>
+    <div class="card">
+      <h3>Document lifecycle</h3>
+      <div class="strip"><span class="step">Draft</span><span class="arrow">→</span><span class="step">Publish</span><span class="arrow">→</span><span class="step">Move / archive</span><span class="arrow">→</span><span class="step">Restore</span></div>
+      <ul>
+        <li>Deleting is soft first.</li>
+        <li>Concurrent edits are guarded.</li>
+        <li>Moving keeps the collection tree in sync.</li>
+      </ul>
+      <p class="muted">Read: <code>server/commands/documentUpdater.ts</code> · <code>server/models/Document.ts</code></p>
+    </div>
+    <div class="card">
+      <h3>Revisions</h3>
+      <div class="strip"><span class="step">Edit</span><span class="arrow">→</span><span class="step">Wait</span><span class="arrow">→</span><span class="step">Snapshot</span><span class="arrow">→</span><span class="step">Restore</span></div>
+      <ul>
+        <li>Snapshots are made in the background, not on save.</li>
+        <li>Identical content is skipped.</li>
+        <li>Tests must wait for the worker.</li>
+      </ul>
+      <p class="muted">Read: <code>server/queues/processors/RevisionsProcessor.ts</code> · <code>server/models/Revision.ts</code></p>
+    </div>
+    <div class="card">
+      <h3>Search and sharing</h3>
+      <div class="strip"><span class="step">Write</span><span class="arrow">→</span><span class="step">Indexed</span><span class="arrow">→</span><span class="step">Search</span><span class="arrow">→</span><span class="step">Share link</span></div>
+      <ul>
+        <li>Title matches rank above body matches.</li>
+        <li>A share link is an unguessable id.</li>
+        <li>Revoking a share cuts public access.</li>
+      </ul>
+      <p class="muted">Read: <code>plugins/search-postgres/server</code> · <code>server/commands/shareLoader.ts</code> · <code>server/models/Share.ts</code></p>
+    </div>
+  </div>
+
+  <!-- 5. EXPLORE -->
+  <h2 id="explore">5 · How to explore</h2>
+  <p class="lead">Pick any action, then follow it down.</p>
+  <ol>
+    <li>Find the route: <code>rg '"documents.update"' server/routes</code></li>
+    <li>Read its input rules (<code>schema.ts</code> next to it).</li>
+    <li>Read the matching file in <code>server/policies</code>.</li>
+    <li>Read the action in <code>server/commands</code>, then the model.</li>
+    <li>Read the colocated <code>*.test.ts</code> to see real usage.</li>
+  </ol>
+  <p class="muted">Tip: the web app calls the same names. Search the action name in <code>app/stores</code> to see who triggers it.</p>
+
+  <!-- 6. TESTS -->
+  <h2 id="tests">6 · Tests</h2>
+  <ul>
+    <li><b>Unit:</b> <code>yarn test path/to/file.test.ts</code> on a local database.</li>
+    <li><b>Integration:</b> <code>yarn test:integration</code> starts throw-away Postgres and Redis in Docker.</li>
+    <li>Integration files are named <code>*.integration.test.ts</code>. See <code>server/routes/api/users/users.integration.test.ts</code>.</li>
+    <li>Test helpers: <code>server/test</code> (<code>factories.ts</code>, <code>TestServer.ts</code>, <code>cleanup.ts</code>).</li>
+    <li>Slower than unit tests, so keep them to the four flows above.</li>
+  </ul>
+  <p class="muted">Out of scope: social sign-in, file contents, live co-editing, the web UI.</p>
+</main>
+</body>
+</html>
