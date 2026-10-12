@@ -13,6 +13,7 @@
   table { border-collapse: collapse; width: 100%; }
   th, td { border: 1px solid #d0d7de; padding: .35rem .7rem; text-align: left; }
   .todo { background: #fff8c5; padding: .1em .35em; border-radius: 4px; }
+  img { max-width: 100%; height: auto; border: 1px solid #d0d7de; border-radius: 6px; margin: .4rem 0 .8rem; }
 </style>
 </head>
 <body>
@@ -106,18 +107,46 @@ yarn test path/to/file.test.ts     # single file</pre>
   <li>Certificate warning: re-run <code>yarn install-local-ssl</code>.</li>
 </ul>
 
-<h2>7. Flows to record</h2>
+<h2>7. Flows (with screenshots)</h2>
+<p>Captured on macOS with Colima, Outline at <code>05ef55e</code>, on a freshly wiped database (<code>docker compose down -v</code>).</p>
 <ol>
-  <li><span class="todo">TODO</span> Sign up and create a workspace.</li>
-  <li><span class="todo">TODO</span> Create a collection and a document; find it in search.</li>
-  <li><span class="todo">TODO</span> Invite a second user; edit together in real time.</li>
+  <li>Sign up and create a workspace.
+    <ol>
+      <li>On an empty database the app opens a "Create workspace" form.<br><img src="img/flow1-1-create-workspace.png" alt="Create workspace form, empty"></li>
+      <li>Fill in workspace name, admin name and admin email.<br><img src="img/flow1-2-workspace-form-filled.png" alt="Create workspace form, filled in"></li>
+      <li>You land on Home, already signed in as the admin. No SMTP or sign-in provider is needed for this step.<br><img src="img/flow1-3-signed-in-home.png" alt="Home page of the new workspace"></li>
+    </ol>
+  </li>
+  <li>Create a collection and a document; find it in search.
+    <ol>
+      <li>Create a collection (here with "Can edit" for everyone).<br><img src="img/flow2-1-create-collection.png" alt="Create a collection dialog with the name Engineering Handbook"></li>
+      <li>The collection opens, empty.<br><img src="img/flow2-2-collection-created.png" alt="Empty Engineering Handbook collection"></li>
+      <li>Write a document inside it.<br><img src="img/flow2-3-draft-document.png" alt="Document titled Onboarding Checklist with one line of text"></li>
+      <li>It shows in the sidebar under the collection.<br><img src="img/flow2-4-published-in-collection.png" alt="Onboarding Checklist listed under Engineering Handbook"></li>
+      <li>Search for a word from the body (<code>laptop</code>) and the document is found.<br><img src="img/flow2-5-search-result.png" alt="Search results listing Onboarding Checklist with laptop highlighted"></li>
+    </ol>
+    <p>Search only finds body text after the editor has saved it, about 10 to 20 seconds after typing. Right after typing, search shows "No documents found". Wait, then reload.</p>
+  </li>
+  <li>Invite a second user; edit together in real time.
+    <ol>
+      <li>Admin opens "Invite people…" and invites a member. Click the button a second time if the dialog does not open.<br><img src="img/flow3-1-invite-user.png" alt="Invite to workspace dialog filled with a name and email"></li>
+      <li>No email is delivered. The backend log prints a line <code>Sign in immediately: http://localhost:3000/auth/email.callback?token=…</code>. Open that link in a separate browser profile (or a private window) to sign in as the invited user. The member sees the admin's new line within a few seconds.<br><img src="img/flow3-2-ben-sees-ada-edit.png" alt="Member's browser showing the admin's new line"></li>
+      <li>The member adds a line and the admin sees it.<br><img src="img/flow3-3-ada-sees-ben-reply.png" alt="Admin's browser showing the member's reply"></li>
+    </ol>
+  </li>
 </ol>
 
-<h2>8. Not yet verified</h2>
+<h2>8. Verification status</h2>
+<h3>Verified</h3>
 <ul>
-  <li><span class="todo">TO VERIFY</span> Full setup run end to end (Docker was not running when this was written).</li>
-  <li><span class="todo">TO VERIFY</span> Postgres 17 and Redis 8 work with this commit.</li>
-  <li><span class="todo">TO VERIFY</span> Sign-in without SMTP in dev.</li>
+  <li>On macOS with Colima: <code>docker compose up -d redis postgres</code>, <code>yarn build:server</code>, <code>yarn db:migrate</code> on an empty database, <code>yarn dev:watch</code>, and the three flows above.</li>
+  <li>Postgres 17 and Redis 8 from <code>docker-compose.yml</code> work with this commit.</li>
+  <li>Sign-in without SMTP in dev: workspace creation signs the admin in directly, and invited users sign in with the link printed in the backend log.</li>
+</ul>
+<h3>Not yet verified</h3>
+<ul>
+  <li><span class="todo">TO VERIFY</span> Node: this run used <code>24.21.0</code>, not <code>22.23.0</code> as listed in section 1.</li>
+  <li><span class="todo">TO VERIFY</span> A fresh clone and a cold run by a second person (the issue asks for this).</li>
   <li><span class="todo">TO VERIFY</span> Linux and Windows (including <code>yarn test:integration</code>; the Windows path, a shell for <code>yarn.cmd</code>, is untested).</li>
 </ul>
 </body>
