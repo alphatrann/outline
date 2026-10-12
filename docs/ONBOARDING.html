@@ -13,6 +13,9 @@
   table { border-collapse: collapse; width: 100%; }
   th, td { border: 1px solid #d0d7de; padding: .35rem .7rem; text-align: left; }
   .todo { background: #fff8c5; padding: .1em .35em; border-radius: 4px; }
+  .check li { list-style: none; margin: .3rem 0; }
+  .check input { margin-right: .5rem; }
+  textarea { width: 100%; min-height: 4.5rem; font: inherit; border: 1px solid #d0d7de; border-radius: 6px; padding: .4rem; }
   img { max-width: 100%; height: auto; border: 1px solid #d0d7de; border-radius: 6px; margin: .4rem 0 .8rem; }
 </style>
 </head>
@@ -149,5 +152,47 @@ yarn test path/to/file.test.ts     # single file</pre>
   <li><span class="todo">TO VERIFY</span> A fresh clone and a cold run by a second person (the issue asks for this).</li>
   <li><span class="todo">TO VERIFY</span> Linux and Windows (including <code>yarn test:integration</code>; the Windows path, a shell for <code>yarn.cmd</code>, is untested).</li>
 </ul>
+
+<h2>9. Cold-run checklist (for teammates)</h2>
+<p>Goal: follow this page only, from a fresh clone, and note every place you got stuck. Do not ask for help first; the gaps are what we want to find. Tick a box when the step works as written.</p>
+<h3>Before you start</h3>
+<ul class="check">
+  <li><label><input type="checkbox"> Machine and OS: <input type="text" size="28" placeholder="e.g. Ubuntu 24.04"></label></li>
+  <li><label><input type="checkbox"> Docker is running (<code>docker ps</code> works).</label></li>
+  <li><label><input type="checkbox"> Ports 3000, 5432 and 6379 are free.</label></li>
+  <li><label><input type="checkbox"> Start time noted: <input type="text" size="10" placeholder="hh:mm"></label></li>
+</ul>
+<h3>Setup (sections 1 to 3)</h3>
+<ul class="check">
+  <li><label><input type="checkbox"> Cloned the repo and checked out <code>05ef55e</code>.</label></li>
+  <li><label><input type="checkbox"> Installed Node and Yarn at the versions in section 1. Version you got: <input type="text" size="12"></label></li>
+  <li><label><input type="checkbox"> <code>docker compose up -d redis postgres</code> started both containers.</label></li>
+  <li><label><input type="checkbox"> <code>yarn install --immutable</code> finished without errors.</label></li>
+  <li><label><input type="checkbox"> Created <code>.env</code> and edited <code>.env.development</code> as described.</label></li>
+  <li><label><input type="checkbox"> <code>yarn build:server</code> finished.</label></li>
+  <li><label><input type="checkbox"> <code>NODE_ENV=development yarn db:migrate</code> finished.</label></li>
+  <li><label><input type="checkbox"> <code>yarn dev:watch</code> runs and <a href="http://localhost:3000">http://localhost:3000</a> loads.</label></li>
+</ul>
+<h3>Flows (section 7)</h3>
+<ul class="check">
+  <li><label><input type="checkbox"> Created a workspace and landed on Home, signed in.</label></li>
+  <li><label><input type="checkbox"> Created a collection and a document.</label></li>
+  <li><label><input type="checkbox"> Found the document by searching for a word in its body.</label></li>
+  <li><label><input type="checkbox"> Invited a second user, signed in with the link from the backend log, and saw each other's edits live.</label></li>
+</ul>
+<h3>Tests (section 5)</h3>
+<ul class="check">
+  <li><label><input type="checkbox"> <code>yarn test path/to/file.test.ts</code> ran one test file.</label></li>
+  <li><label><input type="checkbox"> <code>yarn test:integration</code> passed.</label></li>
+</ul>
+<h3>Gaps found</h3>
+<table>
+  <tr><th>Section / step</th><th>What went wrong</th><th>What fixed it</th></tr>
+  <tr><td><textarea aria-label="Gap 1 step"></textarea></td><td><textarea aria-label="Gap 1 problem"></textarea></td><td><textarea aria-label="Gap 1 fix"></textarea></td></tr>
+  <tr><td><textarea aria-label="Gap 2 step"></textarea></td><td><textarea aria-label="Gap 2 problem"></textarea></td><td><textarea aria-label="Gap 2 fix"></textarea></td></tr>
+  <tr><td><textarea aria-label="Gap 3 step"></textarea></td><td><textarea aria-label="Gap 3 problem"></textarea></td><td><textarea aria-label="Gap 3 fix"></textarea></td></tr>
+</table>
+<p>Finish time: <input type="text" size="10" placeholder="hh:mm"> &nbsp; Total time: <input type="text" size="10" placeholder="e.g. 45 min"></p>
+<p>This page does not save what you type. Copy your answers into a comment on issue #10 when you finish.</p>
 </body>
 </html>
