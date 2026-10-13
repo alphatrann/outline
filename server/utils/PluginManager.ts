@@ -154,7 +154,7 @@ export class PluginManager {
     const rootDir = env.ENVIRONMENT === "test" ? "" : "build";
 
     glob
-      .sync(path.join(rootDir, "plugins/*/server/index.[jt]s"))
+      .sync(path.posix.join(rootDir, "plugins/*/server/index.[jt]s"))
       .forEach((filePath: string) => {
         try {
           // oxlint-disable-next-line typescript/no-require-imports -- path is only known at runtime
