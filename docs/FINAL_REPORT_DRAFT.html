@@ -33,6 +33,38 @@
 </tbody>
 </table>
 
+<h2>A · Hệ thống và phạm vi — Đình Hiếu</h2>
+<p>Outline là knowledge base cộng tác cho nhóm. Trong phạm vi kiểm thử, admin và thành viên thao tác với team, collection, document, revision, tìm kiếm và share link. Mã nguồn gồm <code>app/</code> (React), <code>server/</code> (Koa API), <code>shared/</code> và <code>plugins/</code>. Kế hoạch nhóm giới hạn ở document workflow để xây 5–6 integration test ổn định.</p>
+<p><b>Còn thiếu:</b> actor/use case chính thức và xác nhận phạm vi của tác giả phần A.</p>
+
+<h2>B · Kiến trúc — Đình Hiếu</h2>
+<p>Frontend React/Vite gọi Koa API; request đi qua xác thực và policy trước khi command/model thao tác PostgreSQL. Redis phục vụ queue và các thành phần thời gian thực. <a href="CODEBASE_GUIDE.html">Codebase Guide</a> hiện có sơ đồ container, component và bốn luồng dữ liệu; phần báo cáo cuối cần trích hình có chú thích và giải thích document, collection, revision, search.</p>
+<p><b>Còn thiếu:</b> sơ đồ đã được duyệt, danh sách 3–5 module và mô tả luồng khớp test thực tế.</p>
+
+<h2>C · Môi trường và vận hành — Hoài Nam / Thái Anh xác nhận phân vai</h2>
+<p>Bản onboarding hiện có dùng Node 22.23.0, Yarn 4.18.1, PostgreSQL 17 và Redis 8. Các bước chính là bật Docker, cài dependency, tạo <code>.env</code>, build server, migrate và chạy ứng dụng. Ba luồng đã được ghi ảnh trên macOS: tạo workspace, tạo collection/document và tìm kiếm, mời người thứ hai cộng tác.</p>
+<figure><img src="img/flow2-5-search-result.png" alt="Ảnh kết quả tìm kiếm document trong Outline" style="max-width:100%;border:1px solid #cbd5e1"><figcaption>Ví dụ bằng chứng luồng document và search từ <a href="ONBOARDING.html">onboarding</a>.</figcaption></figure>
+<p><b>Còn thiếu:</b> bằng chứng chạy đúng bản SHA chốt trên máy thứ hai; chốt chủ sở hữu nội dung C giữa kế hoạch nhóm và issue #10.</p>
+
+<h2>D · Nguyên lý K16 — Đình Hiếu</h2>
+<p>Testcontainers dựng PostgreSQL và Redis thật cho mỗi lần chạy suite, thay cho dependency giả lập. Phạm vi loại OAuth/OIDC/email login, attachment và UI; user/team được tạo bằng factory. Tiêu chí dự kiến: mỗi test kiểm tra API và DB, độc lập sau cleanup, chạy ba lần liên tiếp không flaky. Rủi ro chính là Docker không sẵn sàng, migration chậm và trạng thái chia sẻ gây nhiễu test.</p>
+<p><b>Còn thiếu:</b> bản giải thích/giới hạn và tiêu chí pass/fail được duyệt từ issue #14.</p>
+
+<h2>E · Scenario — Hoài Nam, Đình Hiếu review</h2>
+<p><a href="TEST_SCENARIOS_DRAFT.html">Bảng scenario</a> đã có input, tiền điều kiện, kết quả mong đợi và dữ liệu test cho hai test hiện hữu của user/team. Các kịch bản quyền collection, revision, search và share link được ghi là dự kiến.</p>
+<p><b>Còn thiếu:</b> thay các hàng dự kiến bằng assertion đúng từ PR test luồng 1 và 3; người review xác nhận.</p>
+
+<h2>F · Harness và cách chạy — Thái Anh; Hoài Nam biên tập README</h2>
+<p><code>server/test/containers.ts</code> dựng Postgres/Redis; global setup truyền connection string cho Vitest; cleanup xóa dữ liệu giữa test. <a href="../README.md">README</a> đã có một lệnh <code>yarn test:integration</code>. Ngày 13/10 suite hiện có một file với hai test.</p>
+<p><b>Còn thiếu:</b> đủ 5–6 test theo phạm vi, kết quả chạy ba lần liên tiếp và xác nhận CI.</p>
+
+<h2>G · Kết quả và phân tích — Thái Anh</h2>
+<p>Chạy cục bộ ngày 13/10/2026 trên Windows từ <code>D:\outline-k16\repo</code>: <code>Test Files 1 passed (1)</code>, <code>Tests 2 passed (2)</code>, tổng 219.95 giây. Đây là mốc ban đầu, không đại diện kết quả cuối kỳ.</p>
+<p><b>Còn thiếu:</b> log/coverage cuối, ngưỡng đạt, ba lần lặp, danh sách lỗi và RCA (nếu có).</p>
+
+<h2>H · Tái lập — Hoài Nam</h2>
+<p>Đề tài pin SHA gốc <code>05ef55e</code>; repo fork khi lập khung ở <code>37495b3ce</code> đã có tài liệu và harness. Hướng dẫn onboarding ghi phiên bản, biến môi trường và checklist cold run. Bản cuối phải dùng một SHA thống nhất cho lệnh, ảnh và log, đồng thời giải thích sự khác nhau giữa SHA gốc và bản có test.</p>
+<p><b>Còn thiếu:</b> fresh clone trên máy sạch chỉ theo README, ảnh/lệnh/log chạy lại và issue ghi mọi khoảng trống.</p>
 <h2>Quy tắc biên tập bản cuối</h2>
 <ol>
 <li>Mỗi phần bắt đầu bằng mục tiêu, phương pháp, bằng chứng và kết luận ngắn; đánh số hình/bảng và dẫn nguồn.</li>
