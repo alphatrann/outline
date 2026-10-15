@@ -79,8 +79,9 @@
     <li><a href="#containers">2 · Containers</a></li>
     <li><a href="#components">3 · Components</a></li>
     <li><a href="#flows">4 · Flows</a></li>
-    <li><a href="#explore">5 · How to explore</a></li>
-    <li><a href="#tests">6 · Tests</a></li>
+    <li><a href="#modules">5 · Modules</a></li>
+    <li><a href="#explore">6 · How to explore</a></li>
+    <li><a href="#tests">7 · Tests</a></li>
   </ul>
 
   <svg width="0" height="0" aria-hidden="true" style="position:absolute">
@@ -231,8 +232,50 @@
     </div>
   </div>
 
-  <!-- 5. EXPLORE -->
-  <h2 id="explore">5 · How to explore</h2>
+  <!-- 5. MODULES -->
+  <h2 id="modules">5 · Modules <span class="muted">(what the tests touch)</span></h2>
+  <p class="lead">Four building blocks sit under the flows above.</p>
+  <div class="grid">
+    <div class="card">
+      <h3>Document</h3>
+      <ul>
+        <li>The page people write. Has a draft state until published.</li>
+        <li>Belongs to a collection and sits in its tree.</li>
+        <li>Deleting moves it to trash first; archive and restore are separate states.</li>
+      </ul>
+      <p class="muted">Read: <code>server/models/Document.ts</code> · <code>server/commands</code></p>
+    </div>
+    <div class="card">
+      <h3>Collection</h3>
+      <ul>
+        <li>A folder of documents. Keeps the page tree in <code>documentStructure</code>.</li>
+        <li>Has a default permission, or none when private, plus per-person and per-group grants.</li>
+        <li>Changing privacy or sharing records a <code>permission_changed</code> event.</li>
+      </ul>
+      <p class="muted">Read: <code>server/models/Collection.ts</code> · <code>server/policies/collection.ts</code></p>
+    </div>
+    <div class="card">
+      <h3>Revision</h3>
+      <ul>
+        <li>A saved snapshot of a document's title and content.</li>
+        <li>Created by a background worker after edits settle, not on every save.</li>
+        <li><code>Revision.findLatest(documentId)</code> returns the newest one.</li>
+      </ul>
+      <p class="muted">Read: <code>server/models/Revision.ts</code> · <code>server/queues/processors/RevisionsProcessor.ts</code></p>
+    </div>
+    <div class="card">
+      <h3>Search</h3>
+      <ul>
+        <li>Uses Postgres full-text search on a <code>searchVector</code> column.</li>
+        <li>Results are ordered with <code>ts_rank</code>.</li>
+        <li>Results are filtered by what the searcher may read.</li>
+      </ul>
+      <p class="muted">Read: <code>plugins/search-postgres/server/PostgresSearchProvider.ts</code></p>
+    </div>
+  </div>
+
+  <!-- 6. EXPLORE -->
+  <h2 id="explore">6 · How to explore</h2>
   <p class="lead">Pick any action, then follow it down.</p>
   <ol>
     <li>Find the route: <code>rg '"documents.update"' server/routes</code></li>
@@ -243,8 +286,8 @@
   </ol>
   <p class="muted">Tip: the web app calls the same names. Search the action name in <code>app/stores</code> to see who triggers it.</p>
 
-  <!-- 6. TESTS -->
-  <h2 id="tests">6 · Tests</h2>
+  <!-- 7. TESTS -->
+  <h2 id="tests">7 · Tests</h2>
   <ul>
     <li><b>Unit:</b> <code>yarn test path/to/file.test.ts</code> on a local database.</li>
     <li><b>Integration:</b> <code>yarn test:integration</code> starts throw-away Postgres and Redis in Docker.</li>
