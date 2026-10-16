@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Outline + K16 · Technical Plan (Deliverable D)</title>
+<style>
+  body { font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; color: #1f2328; max-width: 900px; margin: 2rem auto; padding: 0 1rem; }
+  h1 { font-size: 1.8rem; margin: 0 0 .25rem; }
+  h2 { font-size: 1.25rem; margin: 2rem 0 .4rem; border-bottom: 1px solid #d0d7de; padding-bottom: .3rem; }
+  h3 { font-size: 1.02rem; margin: 1.2rem 0 .3rem; }
+  code, pre { background: #f6f8fa; border-radius: 6px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  code { padding: .12em .35em; font-size: .9em; }
+  pre { padding: .9rem 1rem; overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: .93rem; }
+  th, td { border: 1px solid #d0d7de; padding: .4rem .65rem; text-align: left; vertical-align: top; }
+  th { background: #f6f8fa; }
+  .meta { color: #57606a; }
+  .note { background: #fff8c5; border-left: 4px solid #d97706; padding: .7rem 1rem; }
+  ul, ol { padding-left: 1.3rem; }
+  li { margin: .25rem 0; }
+</style>
+</head>
+<body>
+<h1>K16 Technical Plan — Ephemeral Integration Testing (Deliverable D)</h1>
+<p class="meta">Issue <a href="https://github.com/alphatrann/outline/issues/14">#14</a> · Owner: H (gsb-b60) · Sprint 2 (Oct 8 – Oct 20, due Oct 17) · Base: <code>origin/main</code> with harness from PR #7 · Supersedes Sprint 1 draft (<code>docs/k16-principles.md</code> at <code>ae00f8951</code>, removed in <code>ca4329304</code>).</p>
+<p>K16 = run the integration suite against disposable Postgres + Redis containers (Testcontainers) instead of mocks. This plan finalizes the principles, scope rationale, assumptions, risks, and pass/fail criteria for the 4 fixed flows described in <a href="CODEBASE_GUIDE.html#flows">Codebase Guide §4</a>.</p>
+
+<h2>1. Principles (final)</h2>
+<ol>
+  <li><b>Hermetic Postgres + Redis per run.</b> <code>server/test/containers.ts</code> (<code>startContainers()</code>) boots <code>postgres:17</code> and <code>redis:8</code> (pinned, matching <code>docker-compose.yml</code>), applies all migrations from <code>server/migrations/</code>, then exposes <code>DATABASE_URL</code>/<code>REDIS_URL</code> via <code>server/test/globalSetupContainers.ts</code> once per run. Containers stop on global teardown.</li>
+  <li><b>Migration-seeded, trigger-faithful.</b> Real migrations keep <code>documents_search_trigger()</code> (tsvector <code>title(A) / previousTitles(C) / text(D)</code>), required for Flow 4 ranking. Seeds come from <code>server/test/factories.ts</code> (<code>buildTeam/buildUser/buildCollection/buildDocument/buildShare</code>), never hand-edited fixtures.</li>
+  <li><b>API-boundary tests.</b> Drive <code>POST /api/*</code> through <code>getTestServer()</code> (<code>server/test/support.ts</code>, <code>TestServer.ts</code>) with API-token auth; assert presenter shape + status codes, then assert DB rows — not internal function calls. Pattern: <code>server/routes/api/users/users.integration.test.ts</code>.</li>
+  <li><b>Deterministic async.</b> Revision creation is debounced: <code>server/queues/processors/DebounceProcessor.ts</code> delays <code>documents.update</code> by <code>(isProduction ? 5 : 0.5) * 60 * 1000</code>, then <code>RevisionsProcessor</code> skips deep-equal latest. Tests poll <code>Revision.findLatest(documentId)</code> instead of fixed sleeps; Bull uses the ephemeral Redis.</li>
+  <li><b>Serial + fast teardown.</b> Vitest project <code>server-integration</code> (<code>vitest.config.ts</code>): <code>server/**/*.integration.test.ts</code>, <code>fileParallelism: false</code>, <code>testTimeout: 30000</code>, <code>hookTimeout: 120000</code>. <code>server/test/cleanup.ts</code> (<code>cleanBetweenTests()</code>) truncates every table except <code>SequelizeMeta</code> and runs <code>flushall</code> before each test. No S3/MinIO/network; <code>setupIntegration.ts</code> keeps only <code>@aws-sdk/franc/request-filtering-agent/dd-trace</code> mocks and does <i>not</i> mock <code>ioredis</code>/bull. Docker host autodetect (<code>configureDockerHost()</code>) covers Colima/Rancher/rootless.</li>
+  <li><b>Scope-locked.</b> Only the 4 flows in §2. Everything else is mocked or excluded (see limitations in <a href="CODEBASE_GUIDE.html#tests">Codebase Guide §7</a>).</li>
+</ol>
+
+<h2>2. Scope rationale — why these 4 flows</h2>
+<table>
+<thead><tr><th>Flow</th><th>Why integration (needs real PG/Redis)</th><th>Integration test (new)</th><th>Unit test (existing)</th></tr></thead>
+<tbody>
+<tr><td>1 · User/Team + collection permissions</td><td>Allow/deny depends on FK rows: <code>UserMembership</code>/<code>GroupMembership</code>, <code>permission=null</code> (private) vs <code>read/read_write</code> (shared), guest rule.</td><td><code>collections.*</code> matrix incl. private-vs-shared + guest (Issue #12 PoC)</td><td><code>policies/collection.test.ts</code> pure ability checks</td></tr>
+<tr><td>2 · Document lifecycle</td><td>Round-trip touches <code>documentStructure</code> index, soft-delete (<code>paranoid</code>), row-lock <code>DocumentConflictError</code>.</td><td><code>create → update → move → archive → restore → delete</code> via API (proof flow first)</td><td><code>commands/document*.test.ts</code>, <code>models/Document.test.ts</code></td></tr>
+<tr><td>3 · Revisions</td><td>Creation is async background work, not inline in <code>documentUpdater</code>.</td><td>Debounced creation + <code>revisions.list/info</code> + <code>restore { revisionId }</code></td><td><code>models/Revision.test.ts</code> builders</td></tr>
+<tr><td>4 · Search + share link</td><td>Ranking is PG-specific (<code>to_tsquery</code>, <code>ts_rank * popularity</code>); share scoping needs <code>published/revokedAt/team+collection.sharing</code> guards.</td><td>FTS ranking + <code>search { shareId }</code> scoping + <code>shares.revoke</code> invalidation</td><td><code>PostgresSearchProvider.test.ts</code>, <code>commands/shareLoader.test.ts</code></td></tr>
+</tbody>
+</table>
+<p>Out of scope (explicit): OAuth/OIDC/email login, <code>groupsSyncer</code> SSO, attachment/import/export file bodies (MinIO/S3 mocked), realtime Y.js (<code>Document.state</code> BLOB, collaboration notifications — only <code>collaboratorIds</code> asserted), external search providers (Elastic), UI.</p>
+
+<h2>3. Assumptions</h2>
+<ul>
+  <li>Auth = pre-seeded user + API token for all flows (no login flow under test).</li>
+  <li><code>SEARCH_PROVIDER=postgres</code> (default); migrations applied so the tsvector trigger exists.</li>
+  <li>Docker available for <code>yarn test:integration</code>; unit suite (<code>yarn test:server</code>) needs no Docker and excludes <code>*.integration.test.ts</code>.</li>
+  <li>Tests seed via factories + migrations; no shared DB state between runs or files.</li>
+  <li>Docs-only deliverable: no app/server code changes, no new i18n strings, <code>yarn format</code> clean.</li>
+</ul>
+
+<h2>4. Risks</h2>
+<table>
+<thead><tr><th>Risk</th><th>Impact</th><th>Mitigation</th></tr></thead>
+<tbody>
+<tr><td>Docker unavailable / wrong context (esp. Windows, Colima, Rancher)</td><td>Harness fails with container-runtime error; blocks all integration tests.</td><td><code>configureDockerHost()</code> fallback; pre-check <code>docker ps</code>; document <code>DOCKER_HOST</code> override in onboarding (#10).</td></tr>
+<tr><td>Revision debounce flakiness (0.5m dev / 5m prod)</td><td>False negatives if test reads before worker writes.</td><td>Poll <code>findLatest()</code> with timeout; never fixed sleeps; keep 30s test timeout.</td></tr>
+<tr><td>PG-only FTS parity</td><td>Ranking assertions invalid on Elastic.</td><td>Pin scope to default provider; mark Elastic as non-goal.</td></tr>
+<tr><td>Serial-suite cost (boot + migrations, 120s hook budget)</td><td>Slow CI, temptation to parallelize and share state.</td><td>Keep suite to 4 flows; record before/after <code>yarn test</code> time; never enable file parallelism on this project.</td></tr>
+<tr><td>Cross-test pollution if <code>cleanBetweenTests()</code> skipped</td><td>Order-dependent passes.</td><td>Require the hook in every <code>*.integration.test.ts</code>; include empty-count test like the users example.</td></tr>
+</tbody>
+</table>
+
+<h2>5. Pass/fail criteria (binding)</h2>
+<ul>
+  <li><b>Pass</b> = HTTP status + presenter shape <i>and</i> DB-row assertion in the same test (e.g. 200 + <code>body.data.name</code> + <code>User.findByPk</code>), independence via <code>cleanBetweenTests()</code>, and <b>3 consecutive</b> green runs of <code>yarn test:integration</code> for the touched files.</li>
+  <li><b>Fail</b> = any of: wrong status/shape, DB row missing or stale, data visible across tests, timeout (&gt;30s test / &gt;120s hook), container boot failure, or flaky 1-of-3.</li>
+  <li>Evidence per PR: command + full log + machine/Docker info + timings. Counts toward #12 (Flow 1), #18/#19 (Flows 2–3 expansion), and #21 (one-command run doc).</li>
+</ul>
+<pre>yarn test:integration server/routes/api/users/users.integration.test.ts
+# repeat 3x; all must show: Test Files 1 passed, Tests 2 passed</pre>
+
+<h2>6. Harness reference</h2>
+<ul>
+  <li><code>server/test/containers.ts</code> — <code>startContainers()</code>, <code>migrate()</code>, <code>configureDockerHost()</code>.</li>
+  <li><code>server/test/globalSetupContainers.ts</code> — per-run boot, env wiring, teardown.</li>
+  <li><code>server/test/setupIntegration.ts</code> + <code>server/test/setup.ts</code> — setup files for the integration project.</li>
+  <li><code>server/test/cleanup.ts</code> — <code>cleanBetweenTests()</code>.</li>
+  <li><code>vitest.config.ts</code> — <code>server-integration</code> project definition.</li>
+  <li><code>server/test/factories.ts</code>, <code>server/test/support.ts</code> — builders + <code>getTestServer()</code>.</li>
+</ul>
+
+<h2>7. Traceability</h2>
+<ul>
+  <li>Depends on: #10 (onboarding env), #11 (harness hardening), #13 (architecture map in Codebase Guide).</li>
+  <li>Unblocks: #12 (Flow 1 PoC), #17–#19 (Sprint 3 flow tests), #21 (run doc), final report §D.</li>
+</ul>
+</body>
+</html>
