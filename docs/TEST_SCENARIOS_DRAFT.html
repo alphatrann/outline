@@ -15,15 +15,15 @@ a { color: #1d4ed8; } code { background: #f1f5f9; padding: .1rem .3rem; }
 </head>
 <body>
 <h1>Test scenario · Luồng 1 và 3</h1>
-<p>Bản nháp cho <a href="https://github.com/alphatrann/outline/issues/22">issue #22</a> · 13/10/2026 · Soạn: Nguyễn Hoài Nam · Cần Đình Hiếu review trước khi chốt.</p>
-<p class="note">Ngày lập bản nháp, nhánh main có một file integration với hai test cho user/team. Luồng collection permission và revision/search/share link chưa có test từ Thái Anh, nên các hàng tương ứng là kịch bản dự kiến, chưa phải kết quả chạy.</p>
+<p>Bản nháp cho <a href="https://github.com/alphatrann/outline/issues/22">issue #22</a> · 19/10/2026 · Soạn: Nguyễn Hoài Nam · Cần Đình Hiếu review trước khi chốt.</p>
+<p class="note">Nhánh <code>main</code> hiện có hai file integration với ba test: hai test user/team và một test cấp quyền collection. Các tình huống thu hồi quyền, thay đổi mức quyền, quyền qua nhóm và luồng 3 vẫn chờ test tương ứng; chưa được ghi là đã pass.</p>
 <h2>Luồng 1 · User/team và quyền collection</h2>
 <table>
 <thead><tr><th>ID / trạng thái</th><th>Input</th><th>Tiền điều kiện</th><th>Kết quả mong đợi</th><th>Dữ liệu test / nguồn</th></tr></thead>
 <tbody>
 <tr><td>F1-01 · đã có test, chạy pass</td><td><code>POST /api/users.update</code>, tên mới “After”.</td><td><code>buildUser({ name: "Before" })</code> tạo user/team trên DB test.</td><td>HTTP 200; <code>body.data.name</code> = “After”; <code>User.findByPk</code> trong PostgreSQL trả tên “After”.</td><td>Before → After; <a href="../server/routes/api/users/users.integration.test.ts">users.integration.test.ts</a>.</td></tr>
 <tr><td>F1-02 · đã có test, chạy pass</td><td>Tạo một user bằng factory.</td><td>Cleanup đã xóa dữ liệu từ test trước.</td><td>Trước khi tạo: User = 0, Team = 0; sau khi tạo: User = 1, Team = 1.</td><td>Factory mặc định; <a href="../server/routes/api/users/users.integration.test.ts">users.integration.test.ts</a>.</td></tr>
-<tr><td>F1-03 · dự kiến, chờ PR #12/#17</td><td>Gán quyền collection qua API cho người được phép; thử truy cập với người bị từ chối.</td><td>Team có hai user và một collection; quyền ban đầu được xác định rõ.</td><td>Phản hồi API của cả hai vai trò đúng chính sách; hàng phân quyền trong PostgreSQL khớp; test độc lập sau cleanup.</td><td>Hai user với ID riêng, một collection; endpoint, mã HTTP và bảng DB sẽ điền từ test đã merge.</td></tr>
+<tr><td>F1-03 · đã có test trên main</td><td><code>POST /api/collections.add_user</code> với <code>CollectionPermission.Read</code>; gọi <code>collections.info</code> bằng user được cấp và user ngoài.</td><td>Team có admin, hai user và một private collection (<code>permission: null</code>).</td><td>API cấp quyền HTTP 200; danh sách memberships chứa user được cấp quyền Read; <code>UserMembership</code> trong PostgreSQL tồn tại với quyền Read, user ngoài không có hàng; <code>collections.info</code> trả 200 cho thành viên và 403 cho người ngoài.</td><td><a href="../server/routes/api/collections/collections.integration.test.ts">collections.integration.test.ts</a>, test “should grant access only to users added to a private collection”.</td></tr>
 </tbody>
 </table>
 <h2>Luồng 3 · Revision, search và share link</h2>
@@ -36,6 +36,7 @@ a { color: #1d4ed8; } code { background: #f1f5f9; padding: .1rem .3rem; }
 </tbody>
 </table>
 <h2>Việc cần làm để chốt Deliverable E</h2>
+<p><b>Kiểm tra ngày 19/10/2026:</b> tại SHA <code>943f00122</code>, <code>corepack yarn test:integration</code> chạy 2 file, 3 test pass trong 247.38 giây trên Windows. F1-01 đến F1-03 có test tương ứng; các hàng luồng 3 là kịch bản dự kiến.</p>
 <ol>
 <li>Đọc PR test luồng 1 và 3 của Thái Anh; thay hàng dự kiến bằng đúng tên test, endpoint, mã HTTP và assertion DB thực tế.</li>
 <li>Chạy bộ test ít nhất một lần; ghi SHA và kết quả bên cạnh bảng scenario.</li>
