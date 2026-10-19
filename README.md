@@ -88,6 +88,46 @@ yarn test path/to/file.test.ts --watch
 yarn test:app
 ```
 
+### Integration tests (Docker)
+
+Files named `*.integration.test.ts` under `server/` belong to their own Vitest project, `server-integration`, and run against real Postgres and Redis — nothing is mocked. The harness starts disposable `postgres:17` and `redis:8` containers with Testcontainers, applies every migration, then removes the containers when the run ends. All tables (except `SequelizeMeta`) and Redis are wiped before each test, so test files run one at a time.
+
+Dependencies:
+
+- Node at the version in `.nvmrc`, Yarn 4, and dependencies installed with `yarn install --immutable`.
+- A running Docker daemon — `docker ps` must succeed.
+- Nothing else. There is no need for local Postgres or Redis, a `.env` file (the committed `.env.test` is loaded), or a previous `yarn build:server`.
+
+Run the whole suite with one command:
+
+```shell
+yarn test:integration
+```
+
+`yarn test:server` excludes these tests, so unit tests continue to run without Docker.
+
+**What success looks like** — Vitest prints a summary and exits with status `0`:
+
+```text
+ Test Files  2 passed (2)
+      Tests  3 passed (3)
+   Duration  72.79s (transform 13.29s, setup 44.30s, import 8.28s, tests 1.55s)
+```
+
+The first run takes around six minutes because it pulls the `postgres:17` and `redis:8` images and migrates a fresh database; later runs are typically one to two minutes. Containers are cleaned up automatically, so `docker ps` shows nothing from the run afterwards. The `configLoader: 'native'` warning printed above the run is expected and harmless.
+
+**Common Docker problems**
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| `Could not find a working container runtime strategy`, or on Windows `failed to connect to the docker API at npipe:////./pipe/dockerDesktopLinuxEngine` | The Docker daemon is not running | Start Docker Desktop (or `colima start`), then confirm `docker ps` works. |
+| The first run hangs or fails while pulling `postgres:17` / `redis:8` | The image registry is unreachable, slow, or proxied | Pull both images manually with `docker pull postgres:17` and `docker pull redis:8`, and check Docker's proxy settings. |
+| Testcontainers cannot find a daemon on Colima, Rancher Desktop, or rootless Docker | The daemon does not listen on the default socket | The harness already points `DOCKER_HOST` at the active Docker context; set `DOCKER_HOST` yourself to override it, and `TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE` if the socket path differs on the host. |
+| `docker ps -a` lists stopped `testcontainers-ryuk-*`, `*-postgres-1` or `*-redis-1` containers | A previous run was interrupted before its cleanup container finished | Remove them with `docker rm -f <name>`; on an interrupted run Testcontainers normally reclaims them on the next run. |
+| Results look confused while `make test` is also running | `make test` uses the compose Postgres on `127.0.0.1:5432`, the integration suite uses its own containers | Run one suite at a time — the integration suite never touches the compose database. |
+
+For a full local setup, including seed data and manual flows, see the [onboarding guide](docs/ONBOARDING.html).
+
 ## Migrations
 
 Sequelize is used to create and run migrations, for example:
