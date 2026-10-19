@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Outline + K16 · Kịch bản demo giữa kỳ 20/10/2026</title>
+<style>
+  :root { color-scheme: light; }
+  body { font: 16px/1.55 system-ui, sans-serif; max-width: 980px; margin: 2rem auto; padding: 0 1.25rem; color: #1f2937; }
+  h1, h2 { color: #172554; }
+  h1 { margin-bottom: .2rem; }
+  h2 { border-bottom: 1px solid #cbd5e1; padding-bottom: .25rem; margin-top: 2rem; }
+  .sub { color: #475569; margin-top: 0; }
+  .notice { border-left: 4px solid #d97706; background: #fffbeb; padding: .75rem 1rem; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { border: 1px solid #cbd5e1; padding: .55rem .65rem; text-align: left; vertical-align: top; }
+  th { background: #eff6ff; }
+  code, pre { font-family: ui-monospace, Consolas, monospace; background: #f1f5f9; }
+  code { padding: .1rem .3rem; border-radius: 3px; }
+  pre { padding: .8rem; overflow-x: auto; }
+  a { color: #1d4ed8; }
+  li { margin: .3rem 0; }
+  .check { list-style: none; padding-left: 0; }
+  .check li::before { content: "☐"; margin-right: .6rem; font-size: 1.15rem; }
+  @media print { body { max-width: none; margin: 0; font-size: 11pt; } a { color: inherit; } }
+</style>
+</head>
+<body>
+<h1>Outline + K16 · Demo giữa kỳ</h1>
+<p class="sub">Ngày dự kiến: 20/10/2026 · Điều phối: Nguyễn Hoài Nam · Cập nhật ngày 19/10/2026 · <a href="https://github.com/alphatrann/outline/issues/15">Issue #15</a></p>
+<p class="notice"><b>Trạng thái:</b> Đây là kịch bản để tập và chốt với nhóm. Buổi tập, hai PoC và phần kiến trúc/kế hoạch kỹ thuật phải được xác nhận bằng kết quả thật trước khi đánh dấu hoàn thành issue.</p>
+
+<h2>Thông điệp chính</h2>
+<p>Nhóm kiểm thử luồng tài liệu của Outline bằng K16: integration test dùng PostgreSQL và Redis thật trong các container dùng một lần. Giữa kỳ chứng minh ứng dụng chạy được, nhóm hiểu kiến trúc và đã có PoC kiểm tra cả phản hồi API lẫn dữ liệu lưu trong DB.</p>
+
+<h2>Thứ tự trình bày (8 phút + hỏi đáp)</h2>
+<table>
+<thead><tr><th>Thời gian</th><th>Người / màn hình</th><th>Lời dẫn và thao tác</th><th>Bằng chứng / phương án dự phòng</th></tr></thead>
+<tbody>
+<tr><td>0:00–0:45</td><td>Nam · mở đầu</td><td>Giới thiệu đề tài, phạm vi document workflow và mục tiêu 5–6 test ổn định cuối kỳ. Nêu rõ đây là mốc PoC giữa kỳ, chưa phải bộ test hoàn chỉnh.</td><td><a href="../README.md">README</a> và kế hoạch nhóm.</td></tr>
+<tr><td>0:45–2:00</td><td>Hiếu · kiến trúc</td><td>Đi qua client React, Koa API, các module request/permission/action/model, PostgreSQL và Redis. Chỉ vị trí collection, document, revision, search trong sơ đồ và một đường đi của request.</td><td><a href="CODEBASE_GUIDE.html">Sơ đồ codebase</a>; chốt bản cuối của <a href="https://github.com/alphatrann/outline/issues/13">#13</a> trước buổi tập.</td></tr>
+<tr><td>2:00–4:30</td><td>Nam · ứng dụng chạy thật</td><td>Trên <code>http://localhost:3000</code>, mở workspace, collection và document đã chuẩn bị; tìm một từ trong nội dung để cho thấy search. Chỉ các bước seed và biến môi trường trong onboarding.</td><td><a href="ONBOARDING.html">Onboarding</a> có ảnh ba luồng. Nếu mạng/trình duyệt lỗi, dùng ảnh flow 1–3 trong trang đó và giải thích lỗi thật.</td></tr>
+<tr><td>4:30–5:30</td><td>Hiếu · kỹ thuật K16</td><td>Giải thích vì sao dependency thật hữu ích cho kiểm thử API + DB, những gì ngoài phạm vi, rủi ro Docker/flaky, tiêu chí pass/fail và quy tắc chạy lại 3 lần.</td><td>Kế hoạch kỹ thuật từ <a href="https://github.com/alphatrann/outline/issues/14">#14</a>; không trình bày phần chưa được duyệt như kết quả đã chốt.</td></tr>
+<tr><td>5:30–7:15</td><td>Thái Anh · PoC test</td><td>Chạy <code>corepack yarn test:integration</code>. Chỉ ba test hiện có: cập nhật user và kiểm tra PostgreSQL; dữ liệu sạch giữa hai test; admin cấp quyền đọc collection riêng tư, người được cấp truy cập HTTP 200 và người ngoài bị từ chối HTTP 403. Chỉ bản ghi <code>UserMembership</code> khớp trong DB.</td><td>Test collection permission đã vào <code>main</code> qua PR #34. Cần lưu log của lần chạy tại buổi tập và xác nhận số test pass tại đúng SHA demo.</td></tr>
+<tr><td>7:15–8:00</td><td>Nam · kết luận</td><td>Tóm tắt những gì đã chứng minh và việc tiếp theo: hoàn thiện harness, 5–6 test ở các luồng, chạy ổn định 3 lần, tài liệu chạy trên máy sạch.</td><td>Liên kết issue trên board; mời hỏi đáp.</td></tr>
+</tbody>
+</table>
+
+<h2>Checklist trước ngày 20/10</h2>
+<p><b>Chạy thử ngày 19/10/2026:</b> từ SHA <code>943f00122</code>, lệnh <code>corepack yarn test:integration</code> trên Windows kết thúc thành công: 2 file, 3 test pass, 247.38 giây. Đây là lần kiểm tra kỹ thuật; buổi tập đầy đủ với nhóm và kết quả tại SHA chốt demo vẫn cần ghi riêng.</p>
+<ul class="check">
+<li>Chốt giờ, địa điểm, thiết bị chiếu và thứ tự người nói với cả nhóm.</li>
+<li>Đồng bộ repo đúng commit cần demo; ghi SHA, phiên bản Node/Yarn/Docker và giữ một bản chạy được.</li>
+<li>Đọc lại <a href="ONBOARDING.html">onboarding</a>; mở Outline và kiểm tra workspace, collection, document, search trực tiếp.</li>
+<li>Đối chiếu sơ đồ/luồng dữ liệu với bản hoàn thiện của #13 và kế hoạch K16 với #14.</li>
+<li>Chạy <code>yarn test:integration</code>, lưu kết quả thực tế; kiểm tra PoC #12 trước khi nhắc đến như phần đã hoàn thành.</li>
+<li>Chuẩn bị ảnh dự phòng trong <code>docs/img/</code> và bản log đã che thông tin nhạy cảm.</li>
+<li>Tập một lần đủ ba người, bấm giờ, thử chuyển màn hình và ghi lại chỗ quá thời lượng hoặc lỗi thao tác.</li>
+<li>Chốt mục nộp theo yêu cầu giảng viên và xác nhận đã nộp trước hạn.</li>
+</ul>
+
+<h2>Biên bản tập và nộp (điền sau khi thực hiện)</h2>
+<table>
+<tr><th>Mục</th><th>Ghi nhận</th></tr>
+<tr><td>Ngày / người tham gia buổi tập</td><td>Chưa thực hiện: ______________________________</td></tr>
+<tr><td>Thời lượng thực tế / lỗi cần sửa</td><td>____________________________________________</td></tr>
+<tr><td>SHA và số test pass tại buổi demo</td><td>____________________________________________</td></tr>
+<tr><td>Hạng mục đã nộp / nơi nộp / thời điểm</td><td>____________________________________________</td></tr>
+</table>
+</body>
+</html>

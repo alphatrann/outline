@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Outline + K16 · Scenario luồng 1 và 3 (bản nháp)</title>
+<style>
+body { font: 16px/1.55 system-ui,sans-serif; max-width: 1120px; margin: 2rem auto; padding: 0 1.25rem; color: #1f2937; }
+h1,h2 { color: #172554; } h2 { border-bottom: 1px solid #cbd5e1; padding-bottom: .25rem; margin-top: 2rem; }
+table { border-collapse: collapse; width: 100%; } th,td { border: 1px solid #cbd5e1; padding: .5rem .6rem; text-align: left; vertical-align: top; } th { background: #eff6ff; }
+a { color: #1d4ed8; } code { background: #f1f5f9; padding: .1rem .3rem; }
+.note { border-left: 4px solid #d97706; background: #fffbeb; padding: .7rem 1rem; }
+@media print { body { max-width: none; margin: 0; font-size: 10pt; } }
+</style>
+</head>
+<body>
+<h1>Test scenario · Luồng 1 và 3</h1>
+<p>Bản nháp cho <a href="https://github.com/alphatrann/outline/issues/22">issue #22</a> · 19/10/2026 · Soạn: Nguyễn Hoài Nam · Cần Đình Hiếu review trước khi chốt.</p>
+<p class="note">Nhánh <code>main</code> hiện có hai file integration với ba test: hai test user/team và một test cấp quyền collection. Các tình huống thu hồi quyền, thay đổi mức quyền, quyền qua nhóm và luồng 3 vẫn chờ test tương ứng; chưa được ghi là đã pass.</p>
+<h2>Luồng 1 · User/team và quyền collection</h2>
+<table>
+<thead><tr><th>ID / trạng thái</th><th>Input</th><th>Tiền điều kiện</th><th>Kết quả mong đợi</th><th>Dữ liệu test / nguồn</th></tr></thead>
+<tbody>
+<tr><td>F1-01 · đã có test, chạy pass</td><td><code>POST /api/users.update</code>, tên mới “After”.</td><td><code>buildUser({ name: "Before" })</code> tạo user/team trên DB test.</td><td>HTTP 200; <code>body.data.name</code> = “After”; <code>User.findByPk</code> trong PostgreSQL trả tên “After”.</td><td>Before → After; <a href="../server/routes/api/users/users.integration.test.ts">users.integration.test.ts</a>.</td></tr>
+<tr><td>F1-02 · đã có test, chạy pass</td><td>Tạo một user bằng factory.</td><td>Cleanup đã xóa dữ liệu từ test trước.</td><td>Trước khi tạo: User = 0, Team = 0; sau khi tạo: User = 1, Team = 1.</td><td>Factory mặc định; <a href="../server/routes/api/users/users.integration.test.ts">users.integration.test.ts</a>.</td></tr>
+<tr><td>F1-03 · đã có test trên main</td><td><code>POST /api/collections.add_user</code> với <code>CollectionPermission.Read</code>; gọi <code>collections.info</code> bằng user được cấp và user ngoài.</td><td>Team có admin, hai user và một private collection (<code>permission: null</code>).</td><td>API cấp quyền HTTP 200; danh sách memberships chứa user được cấp quyền Read; <code>UserMembership</code> trong PostgreSQL tồn tại với quyền Read, user ngoài không có hàng; <code>collections.info</code> trả 200 cho thành viên và 403 cho người ngoài.</td><td><a href="../server/routes/api/collections/collections.integration.test.ts">collections.integration.test.ts</a>, test “should grant access only to users added to a private collection”.</td></tr>
+</tbody>
+</table>
+<h2>Luồng 3 · Revision, search và share link</h2>
+<table>
+<thead><tr><th>ID / trạng thái</th><th>Input</th><th>Tiền điều kiện</th><th>Kết quả mong đợi</th><th>Dữ liệu test / nguồn</th></tr></thead>
+<tbody>
+<tr><td>F3-01 · dự kiến, chờ PR #19</td><td>Tạo rồi sửa nội dung document.</td><td>User có quyền edit và document đã publish trong collection.</td><td>API phản hồi thành công; revision mới lưu đúng nội dung/phiên bản trong PostgreSQL.</td><td>Hai nội dung khác nhau; endpoint, ID revision và kiểm tra cụ thể sẽ điền từ test.</td></tr>
+<tr><td>F3-02 · dự kiến, chờ PR #19</td><td>Tìm một từ chỉ xuất hiện trong body document.</td><td>Document đã được lưu/index; user có quyền xem.</td><td>Search trả document phù hợp; kiểm tra trạng thái document và dữ liệu index trong DB. Thời điểm index phải được đồng bộ để tránh flaky.</td><td>Từ khóa duy nhất cho mỗi test; endpoint và cách chờ index sẽ điền từ test.</td></tr>
+<tr><td>F3-03 · dự kiến, chờ PR #19</td><td>Tạo và truy cập share link.</td><td>Document hợp lệ; trạng thái quyền chia sẻ được thiết lập.</td><td>API trả link hợp lệ; bản ghi share trong DB khớp document; quyền truy cập/thu hồi được kiểm tra theo test thực tế.</td><td>Document, token/link tạm; endpoint và mã HTTP sẽ điền từ test.</td></tr>
+</tbody>
+</table>
+<h2>Việc cần làm để chốt Deliverable E</h2>
+<p><b>Kiểm tra ngày 19/10/2026:</b> tại SHA <code>943f00122</code>, <code>corepack yarn test:integration</code> chạy 2 file, 3 test pass trong 247.38 giây trên Windows. F1-01 đến F1-03 có test tương ứng; các hàng luồng 3 là kịch bản dự kiến.</p>
+<ol>
+<li>Đọc PR test luồng 1 và 3 của Thái Anh; thay hàng dự kiến bằng đúng tên test, endpoint, mã HTTP và assertion DB thực tế.</li>
+<li>Chạy bộ test ít nhất một lần; ghi SHA và kết quả bên cạnh bảng scenario.</li>
+<li>Nhờ Đình Hiếu đối chiếu điều kiện đầu vào, quyền, dữ liệu âm tính và độ phủ của từng luồng.</li>
+</ol>
+</body>
+</html>

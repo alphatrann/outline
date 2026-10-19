@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Outline + K16 · Khung báo cáo A–H</title>
+<style>
+  body { font: 16px/1.55 system-ui, sans-serif; color: #1f2937; max-width: 980px; margin: 2rem auto; padding: 0 1.25rem; }
+  h1, h2 { color: #172554; } h2 { border-bottom: 1px solid #cbd5e1; padding-bottom: .25rem; margin-top: 2rem; }
+  table { border-collapse: collapse; width: 100%; } th, td { border: 1px solid #cbd5e1; padding: .55rem .7rem; text-align: left; vertical-align: top; }
+  th { background: #eff6ff; } a { color: #1d4ed8; } code { background: #f1f5f9; padding: .1rem .3rem; }
+  .note { padding: .7rem 1rem; border-left: 4px solid #d97706; background: #fffbeb; }
+  @media print { body { max-width: none; margin: 0; font-size: 11pt; } }
+</style>
+</head>
+<body>
+<h1>Đề cương báo cáo Outline + K16</h1>
+<p>Khung tập hợp đầu vào cho <a href="https://github.com/alphatrann/outline/issues/27">issue #27</a> · Cập nhật 19/10/2026 · Người tổng hợp: Nguyễn Hoài Nam. Hạn nội bộ: 30/11/2026.</p>
+<p class="note">Tài liệu này là khung biên tập. Kết quả thử nghiệm, số đo, lỗi, RCA và xác nhận của từng tác giả chỉ được điền sau khi có bằng chứng. Bản cuối cần được cả ba thành viên duyệt và chốt lịch nộp theo ngày bảo vệ thực tế.</p>
+
+<h2>Bảng nhận nội dung</h2>
+<table>
+<thead><tr><th>Phần</th><th>Chủ trì theo kế hoạch nhóm</th><th>Đầu vào đã có</th><th>Phần còn thiếu / cần xác nhận</th></tr></thead>
+<tbody>
+<tr><td>A · Mục tiêu và phạm vi hệ thống</td><td>Đình Hiếu</td><td><a href="CODEBASE_GUIDE.html">Codebase Guide</a>: cây module, bốn luồng; <a href="../README.md">README</a>: giới thiệu Outline.</td><td>Actor/use case và mô tả phạm vi được tác giả xác nhận; đối chiếu với deliverable A của #13.</td></tr>
+<tr><td>B · Kiến trúc</td><td>Đình Hiếu</td><td><a href="CODEBASE_GUIDE.html">Sơ đồ container/component và mô tả luồng</a>; <a href="ARCHITECTURE.md">kiến trúc upstream</a>.</td><td>Chốt 3–5 module liên quan test, chú thích hình và nguồn; Hiếu duyệt bản cuối.</td></tr>
+<tr><td>C · Môi trường và chạy hệ thống</td><td>Hoài Nam theo kế hoạch nhóm; issue #10 giao Thái Anh</td><td><a href="ONBOARDING.html">Onboarding</a>: phiên bản, biến môi trường, build/migrate, ba luồng có ảnh.</td><td>Chốt người viết giữa kế hoạch và issue; thêm bằng chứng cold run trên Windows/Linux và kết quả đúng SHA dùng trong báo cáo.</td></tr>
+<tr><td>D · K16 và tiêu chí</td><td>Đình Hiếu</td><td>Kế hoạch nhóm 30/09: dependency thật, ngoài phạm vi OAuth/UI, API + DB, chạy lại 3 lần; <a href="CODEBASE_GUIDE.html">bản nháp kỹ thuật</a>.</td><td>Bản kỹ thuật đã duyệt từ <a href="https://github.com/alphatrann/outline/issues/14">#14</a>, giả định/rủi ro, ngưỡng pass/fail chính thức.</td></tr>
+<tr><td>E · Test scenario</td><td>Đình Hiếu, phối hợp Thái Anh; issue #22 giao Hoài Nam</td><td><a href="TEST_SCENARIOS_DRAFT.html">Bảng scenario bản nháp</a> và <a href="../server/routes/api/users/users.integration.test.ts">test mẫu users.update</a>: tạo user, HTTP 200, kiểm tra tên trong DB; test dọn dữ liệu.</td><td>Bảng input/tiền điều kiện/kết quả mong đợi/dữ liệu cho từng test luồng 1 và 3 sau khi PR của Thái Anh có mặt; Hiếu review.</td></tr>
+<tr><td>F · Harness và cách chạy</td><td>Thái Anh; issue #21 giao Hoài Nam phần README</td><td><a href="../server/test/containers.ts">Testcontainers</a>, <a href="../server/test/globalSetupContainers.ts">global setup</a>, <a href="../README.md">lệnh chạy một dòng</a>.</td><td>Chốt đủ 5–6 test, teardown/cleanup ổn định, ba lần chạy liên tiếp và thông tin phiên bản chốt.</td></tr>
+<tr><td>G · Kết quả, lỗi và RCA</td><td>Thái Anh</td><td>Ngày 19/10 tại SHA <code>943f00122</code>: <code>corepack yarn test:integration</code> trên Windows chạy 2 file, 3 test pass (247.38 giây). Đây là kết quả sơ bộ, chưa phải số cuối.</td><td>Log, coverage, số lần lặp, bảng lỗi và RCA hoặc lý giải khi không phát hiện lỗi.</td></tr>
+<tr><td>H · Tái lập trên máy sạch</td><td>Hoài Nam</td><td><a href="ONBOARDING.html">Hướng dẫn cold run</a> và SHA gốc <code>05ef55e</code>. Bản fork hiện hành khi lập khung: <code>37495b3ce</code>.</td><td>Chốt SHA cuối để tránh lẫn bản gốc và bản có harness; chạy từ fresh clone trên máy sạch theo #24, lưu ảnh/lệnh/log và issue cho mọi lỗ hổng hướng dẫn.</td></tr>
+</tbody>
+</table>
+
+<h2>A · Hệ thống và phạm vi — Đình Hiếu</h2>
+<p>Outline là knowledge base cộng tác cho nhóm. Trong phạm vi kiểm thử, admin và thành viên thao tác với team, collection, document, revision, tìm kiếm và share link. Mã nguồn gồm <code>app/</code> (React), <code>server/</code> (Koa API), <code>shared/</code> và <code>plugins/</code>. Kế hoạch nhóm giới hạn ở document workflow để xây 5–6 integration test ổn định.</p>
+<p><b>Còn thiếu:</b> actor/use case chính thức và xác nhận phạm vi của tác giả phần A.</p>
+
+<h2>B · Kiến trúc — Đình Hiếu</h2>
+<p>Frontend React/Vite gọi Koa API; request đi qua xác thực và policy trước khi command/model thao tác PostgreSQL. Redis phục vụ queue và các thành phần thời gian thực. <a href="CODEBASE_GUIDE.html">Codebase Guide</a> hiện có sơ đồ container, component và bốn luồng dữ liệu; phần báo cáo cuối cần trích hình có chú thích và giải thích document, collection, revision, search.</p>
+<p><b>Còn thiếu:</b> sơ đồ đã được duyệt, danh sách 3–5 module và mô tả luồng khớp test thực tế.</p>
+
+<h2>C · Môi trường và vận hành — Hoài Nam / Thái Anh xác nhận phân vai</h2>
+<p>Bản onboarding hiện có dùng Node 22.23.0, Yarn 4.18.1, PostgreSQL 17 và Redis 8. Các bước chính là bật Docker, cài dependency, tạo <code>.env</code>, build server, migrate và chạy ứng dụng. Ba luồng đã được ghi ảnh trên macOS: tạo workspace, tạo collection/document và tìm kiếm, mời người thứ hai cộng tác.</p>
+<figure><img src="img/flow2-5-search-result.png" alt="Ảnh kết quả tìm kiếm document trong Outline" style="max-width:100%;border:1px solid #cbd5e1"><figcaption>Ví dụ bằng chứng luồng document và search từ <a href="ONBOARDING.html">onboarding</a>.</figcaption></figure>
+<p><b>Còn thiếu:</b> bằng chứng chạy đúng bản SHA chốt trên máy thứ hai; chốt chủ sở hữu nội dung C giữa kế hoạch nhóm và issue #10.</p>
+
+<h2>D · Nguyên lý K16 — Đình Hiếu</h2>
+<p>Testcontainers dựng PostgreSQL và Redis thật cho mỗi lần chạy suite, thay cho dependency giả lập. Phạm vi loại OAuth/OIDC/email login, attachment và UI; user/team được tạo bằng factory. Tiêu chí dự kiến: mỗi test kiểm tra API và DB, độc lập sau cleanup, chạy ba lần liên tiếp không flaky. Rủi ro chính là Docker không sẵn sàng, migration chậm và trạng thái chia sẻ gây nhiễu test.</p>
+<p><b>Còn thiếu:</b> bản giải thích/giới hạn và tiêu chí pass/fail được duyệt từ issue #14.</p>
+
+<h2>E · Scenario — Hoài Nam, Đình Hiếu review</h2>
+<p><a href="TEST_SCENARIOS_DRAFT.html">Bảng scenario</a> đã có input, tiền điều kiện, kết quả mong đợi và dữ liệu test cho hai test user/team và một test cấp quyền collection. Các kịch bản còn lại của quyền collection, revision, search và share link được ghi là dự kiến.</p>
+<p><b>Còn thiếu:</b> thay các hàng dự kiến bằng assertion đúng từ PR test luồng 1 và 3; người review xác nhận.</p>
+
+<h2>F · Harness và cách chạy — Thái Anh; Hoài Nam biên tập README</h2>
+<p><code>server/test/containers.ts</code> dựng Postgres/Redis; global setup truyền connection string cho Vitest; cleanup xóa dữ liệu giữa test. <a href="../README.md">README</a> đã có một lệnh <code>yarn test:integration</code>. Ngày 19/10 suite có hai file với ba test.</p>
+<p><b>Còn thiếu:</b> đủ 5–6 test theo phạm vi, kết quả chạy ba lần liên tiếp và xác nhận CI.</p>
+
+<h2>G · Kết quả và phân tích — Thái Anh</h2>
+<p>Chạy cục bộ ngày 19/10/2026 trên Windows tại SHA <code>943f00122</code>: <code>corepack yarn test:integration</code>, <code>Test Files 2 passed (2)</code>, <code>Tests 3 passed (3)</code>, tổng 247.38 giây. Đây là mốc trước giữa kỳ, không đại diện kết quả cuối kỳ.</p>
+<p><b>Còn thiếu:</b> log/coverage cuối, ngưỡng đạt, ba lần lặp, danh sách lỗi và RCA (nếu có).</p>
+
+<h2>H · Tái lập — Hoài Nam</h2>
+<p>Đề tài pin SHA gốc <code>05ef55e</code>; repo fork khi lập khung ở <code>37495b3ce</code> đã có tài liệu và harness. Hướng dẫn onboarding ghi phiên bản, biến môi trường và checklist cold run. Bản cuối phải dùng một SHA thống nhất cho lệnh, ảnh và log, đồng thời giải thích sự khác nhau giữa SHA gốc và bản có test.</p>
+<p><b>Còn thiếu:</b> fresh clone trên máy sạch chỉ theo README, ảnh/lệnh/log chạy lại và issue ghi mọi khoảng trống.</p>
+<h2>Quy tắc biên tập bản cuối</h2>
+<ol>
+<li>Mỗi phần bắt đầu bằng mục tiêu, phương pháp, bằng chứng và kết luận ngắn; đánh số hình/bảng và dẫn nguồn.</li>
+<li>Thống nhất một SHA/phiên bản dùng cho toàn bộ lệnh, log và ảnh; giải thích quan hệ với SHA gốc <code>05ef55e</code>.</li>
+<li>Đưa lệnh, kết quả pass/fail, môi trường và thời điểm chạy sát nhau để người đọc tái lập được.</li>
+<li>Không ghi “đã hoàn thành” cho buổi họp, cold run, test hay số liệu coverage trước khi có kết quả thật.</li>
+<li>Gửi từng phần cho tác giả tương ứng duyệt, sau đó chốt tổng thể và xuất bản nộp.</li>
+</ol>
+</body>
+</html>

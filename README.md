@@ -88,6 +88,18 @@ yarn test path/to/file.test.ts --watch
 yarn test:app
 ```
 
+### Integration tests (Postgres and Redis in Docker)
+
+Install Node.js 22, enable Yarn 4 through Corepack, and start Docker. Confirm `docker ps` works; local Postgres, Redis, and `docker compose` are not needed for this suite. From the repository root, run:
+
+```shell
+yarn test:integration
+```
+
+Vitest starts disposable PostgreSQL 17 and Redis 8 containers, applies migrations, runs the `server-integration` project, and removes the containers afterwards. A successful run ends with all integration test files and tests passing (currently two files with three tests). The first run can take longer while Docker pulls images. The tests check both API responses and persisted database state.
+
+If Docker cannot be found, start Docker Desktop or your active Docker context and retry `docker ps`. If `yarn` is not on your PATH, use `corepack yarn test:integration`. For setup details and platform-specific notes, see the [local onboarding guide](docs/ONBOARDING.html).
+
 ## Migrations
 
 Sequelize is used to create and run migrations, for example:
