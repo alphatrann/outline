@@ -135,6 +135,16 @@ jobs:
       - name: Run server tests
         run: yarn test:server --maxWorkers=4 --shard=${{ matrix.shard }}/6
 
+  test-integration:
+    needs: changes
+    if: ${{ needs.changes.outputs.server == 'true' || needs.changes.outputs.config == 'true' }}
+    runs-on: ${{ needs.changes.outputs.runner }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/install
+      - name: Run integration tests
+        run: yarn test:integration
+
   bundle-size:
     needs: changes
     if: ${{ (needs.changes.outputs.app == 'true' || needs.changes.outputs.config == 'true') && github.repository == 'outline/outline' }}
@@ -160,7 +170,7 @@ jobs:
   # Audit is intentionally excluded, it reports advisories that can have no
   # fix available or affect dev only and should not block merging.
   ci:
-    needs: [changes, lint, actionlint, types, test, test-server, bundle-size]
+    needs: [changes, lint, actionlint, types, test, test-server, test-integration, bundle-size]
     if: always()
     runs-on: ubuntu-latest
     steps:
