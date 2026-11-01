@@ -8,6 +8,7 @@ import {
 import { cleanBetweenTests } from "@server/test/cleanup";
 import { getTestServer } from "@server/test/support";
 import { CollectionPermission } from "@shared/types";
+import { Document } from "@server/models";
 
 const server = getTestServer();
 cleanBetweenTests();
@@ -122,5 +123,91 @@ describe("#documents.search (integration)", () => {
       (d: { document: { id: string } }) => d.document.id
     );
     expect(ids).toContain(sharedDoc.id);
+  });
+});
+
+describe("#documents.lifecycle (integration)", () => {
+  it("should create, publish, archive, and restore a document end to end", async () => {
+    const team = await buildTeam();
+    const user = await buildUser({ teamId: team.id });
+    const collection = await buildCollection({
+      teamId: team.id,
+      userId: user.id,
+    });
+
+    // 1. Create — draft (not published, not archived)
+    const createRes = await server.post("/api/documents.create", user, {
+      body: {
+        title: "Lifecycle doc",
+        text: "Initial content",
+        collectionId: collection.id,
+      },
+    });
+    expect(createRes.status).toEqual(200);
+    const { data: created } = await createRes.json();
+    expect(created.publishedAt).toBeNull();
+    expect(created.archivedAt).toBeNull();
+
+    // DB: draft state
+    const createdDoc = await Document.findByPk(created.id, {
+      rejectOnEmpty: true,
+    });
+    expect(createdDoc.publishedAt).toBeNull();
+    expect(createdDoc.archivedAt).toBeNull();
+    expect(createdDoc.isActive).toBe(true);
+
+    // 2. Publish — no separate documents.publish route; use documents.update with publish: true
+    const publishRes = await server.post("/api/documents.update", user, {
+      body: {
+        id: created.id,
+        publish: true,
+      },
+    });
+    expect(publishRes.status).toEqual(200);
+    const { data: published } = await publishRes.json();
+    expect(published.publishedAt).toBeTruthy();
+
+    const publishedDoc = await Document.findByPk(created.id, {
+      rejectOnEmpty: true,
+    });
+    expect(publishedDoc.publishedAt).not.toBeNull();
+
+    // 3. Archive
+    const archiveRes = await server.post("/api/documents.archive", user, {
+      body: {
+        id: created.id,
+        reason: "Superseded by newer guide",
+      },
+    });
+    expect(archiveRes.status).toEqual(200);
+    const { data: archived } = await archiveRes.json();
+    expect(archived.archivedAt).toBeTruthy();
+    expect(archived.deprecatedReason).toEqual("Superseded by newer guide");
+
+    const archivedDoc = await Document.findByPk(created.id, {
+      rejectOnEmpty: true,
+      paranoid: false,
+    });
+    expect(archivedDoc.archivedAt).not.toBeNull();
+    expect(archivedDoc.isActive).toBe(false);
+
+    // 4. Restore
+    const restoreRes = await server.post("/api/documents.restore", user, {
+      body: {
+        id: created.id,
+      },
+    });
+    expect(restoreRes.status).toEqual(200);
+    const { data: restored } = await restoreRes.json();
+    expect(restored.archivedAt).toBeNull();
+
+    const restoredDoc = await Document.findByPk(created.id, {
+      rejectOnEmpty: true,
+      paranoid: false,
+    });
+    expect(restoredDoc.archivedAt).toBeNull();
+    expect(restoredDoc.isActive).toBe(true);
+    // Restoring un-archives but does not unpublish
+    expect(restoredDoc.publishedAt).not.toBeNull();
   });
 });
