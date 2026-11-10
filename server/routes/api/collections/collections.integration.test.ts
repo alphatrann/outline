@@ -13,7 +13,7 @@ const server = getTestServer();
 cleanBetweenTests();
 
 describe("#collections.permissions", () => {
-  it('should verify document permission boundary for Read vs ReadWrite membership', async () => {
+  it("should verify document permission boundary for Read vs ReadWrite membership", async () => {
     const team = await buildTeam();
     const admin = await buildAdmin({ teamId: team.id });
     const readUser = await buildUser({ teamId: team.id });
@@ -40,31 +40,39 @@ describe("#collections.permissions", () => {
       },
     });
 
-    const readDoc = await server.post('/api/documents.create', readUser, {
+    const readDoc = await server.post("/api/documents.create", readUser, {
       body: {
         id: crypto.randomUUID(),
         collectionId: collection.id,
         title: `Doc-${readUser.id}-${Date.now()}`,
-        content: [{ type: "paragraph", content: [{ type: "text", text: "Test" }] }],
-      }
-    })
+        content: [
+          { type: "paragraph", content: [{ type: "text", text: "Test" }] },
+        ],
+      },
+    });
     // A Read member cannot create a document in a private collection;
     // only ReadWrite or Admin membership allows document creation.
-    expect(readDoc.status).toEqual(403)
+    expect(readDoc.status).toEqual(403);
 
-    const readWriteDoc = await server.post('/api/documents.create', readWriteUser, {
-      body: {
-        id: crypto.randomUUID(),
-        collectionId: collection.id,
-        title: `Doc-${readWriteUser.id}-${Date.now()}`,
-        content: [{ type: "paragraph", content: [{ type: "text", text: "Test" }] }],
+    const readWriteDoc = await server.post(
+      "/api/documents.create",
+      readWriteUser,
+      {
+        body: {
+          id: crypto.randomUUID(),
+          collectionId: collection.id,
+          title: `Doc-${readWriteUser.id}-${Date.now()}`,
+          content: [
+            { type: "paragraph", content: [{ type: "text", text: "Test" }] },
+          ],
+        },
       }
-    })
+    );
 
-    expect(readWriteDoc.status).toEqual(200)
-  })
+    expect(readWriteDoc.status).toEqual(200);
+  });
 
-  it('read and read_write cannot update collection', async () => {
+  it("read and read_write cannot update collection", async () => {
     /*
      * The collection "update" operation requires Admin membership
      * for BOTH Read and ReadWrite members. This test demonstrates the
@@ -104,33 +112,41 @@ describe("#collections.permissions", () => {
 
     // Neither Read nor ReadWrite can update collection metadata -
     // only Admin can. Both should return 403.
-    const updateResRead = await server.post('/api/collections.update', allowedRead, {
-      body: {
-        id: collection.id,
-        name: "Edited Collection"
+    const updateResRead = await server.post(
+      "/api/collections.update",
+      allowedRead,
+      {
+        body: {
+          id: collection.id,
+          name: "Edited Collection",
+        },
       }
-    })
-    expect(updateResRead.status).toEqual(403)
+    );
+    expect(updateResRead.status).toEqual(403);
 
-    const updateResReadWrite = await server.post('/api/collections.update', allowedReadWrite, {
-      body: {
-        id: collection.id,
-        name: "Edited Collection"
+    const updateResReadWrite = await server.post(
+      "/api/collections.update",
+      allowedReadWrite,
+      {
+        body: {
+          id: collection.id,
+          name: "Edited Collection",
+        },
       }
-    })
-    expect(updateResReadWrite.status).toEqual(403)
+    );
+    expect(updateResReadWrite.status).toEqual(403);
 
     // User with Admin permission can update the collection
-    const adminUpdateRes = await server.post('/api/collections.update', admin, {
+    const adminUpdateRes = await server.post("/api/collections.update", admin, {
       body: {
         id: collection.id,
-        name: "Edited Collection"
-      }
-    })
-    expect(adminUpdateRes.status).toEqual(200)
-  })
+        name: "Edited Collection",
+      },
+    });
+    expect(adminUpdateRes.status).toEqual(200);
+  });
 
-  it('should default user permission to defaultCollectionPermission when adding user', async () => {
+  it("should default user permission to defaultCollectionPermission when adding user", async () => {
     const team = await buildTeam();
     const admin = await buildAdmin({ teamId: team.id });
     const allowed = await buildUser({ teamId: team.id });
@@ -158,9 +174,9 @@ describe("#collections.permissions", () => {
         permission: allowed.defaultCollectionPermission,
       })
     );
-  })
+  });
 
-  it('should allow membership listing for authorized users', async () => {
+  it("should allow membership listing for authorized users", async () => {
     const team = await buildTeam();
     const admin = await buildAdmin({ teamId: team.id });
     const allowed = await buildUser({ teamId: team.id });
@@ -180,26 +196,38 @@ describe("#collections.permissions", () => {
     });
 
     // Admin can see all memberships
-    const adminMemberships = await server.post("/api/collections.memberships", admin, {
-      body: { id: collection.id },
-    });
+    const adminMemberships = await server.post(
+      "/api/collections.memberships",
+      admin,
+      {
+        body: { id: collection.id },
+      }
+    );
     expect(adminMemberships.status).toEqual(200);
 
     // Allowed user can see memberships
-    const allowedMemberships = await server.post("/api/collections.memberships", allowed, {
-      body: { id: collection.id },
-    });
+    const allowedMemberships = await server.post(
+      "/api/collections.memberships",
+      allowed,
+      {
+        body: { id: collection.id },
+      }
+    );
     expect(allowedMemberships.status).toEqual(200);
 
     // Denied user (not added to collection) cannot see memberships
     const denied = await buildUser({ teamId: team.id });
-    const deniedMemberships = await server.post("/api/collections.memberships", denied, {
-      body: { id: collection.id },
-    });
+    const deniedMemberships = await server.post(
+      "/api/collections.memberships",
+      denied,
+      {
+        body: { id: collection.id },
+      }
+    );
     expect(deniedMemberships.status).toEqual(403);
-  })
+  });
 
-  it('should update collection privacy and affect access', async () => {
+  it("should update collection privacy and affect access", async () => {
     const team = await buildTeam();
     const admin = await buildAdmin({ teamId: team.id });
     const allowed = await buildUser({ teamId: team.id });
@@ -225,11 +253,11 @@ describe("#collections.permissions", () => {
     expect(allowedInfo.status).toEqual(200);
 
     // Admin changes collection permission to null (keeps it private)
-    await server.post('/api/collections.update', admin, {
+    await server.post("/api/collections.update", admin, {
       body: {
         id: collection.id,
         permission: null,
-      }
+      },
     });
 
     // Allowed user should still have access (has Read membership) even though private
@@ -244,9 +272,9 @@ describe("#collections.permissions", () => {
       body: { id: collection.id },
     });
     expect(newUserInfo.status).toEqual(403);
-  })
+  });
 
-  it('should revoke user access after double remove_user call', async () => {
+  it("should revoke user access after double remove_user call", async () => {
     const team = await buildTeam();
     const admin = await buildAdmin({ teamId: team.id });
     const allowed = await buildUser({ teamId: team.id });
@@ -269,28 +297,36 @@ describe("#collections.permissions", () => {
     await server.post("/api/collections.remove_user", admin, {
       body: {
         id: collection.id,
-        userId: allowed.id
+        userId: allowed.id,
       },
     });
 
     // User should no longer have access
-    const noLongerAllowed = await server.post("/api/collections.info", allowed, {
-      body: { id: collection.id },
-    });
+    const noLongerAllowed = await server.post(
+      "/api/collections.info",
+      allowed,
+      {
+        body: { id: collection.id },
+      }
+    );
     expect(noLongerAllowed.status).toEqual(403);
 
     // Second remove should handle gracefully - may return 200, 400, or 404 depending on implementation
-    const doubleRemove = await server.post("/api/collections.remove_user", admin, {
-      body: {
-        id: collection.id,
-        userId: allowed.id
-      },
-    });
+    const doubleRemove = await server.post(
+      "/api/collections.remove_user",
+      admin,
+      {
+        body: {
+          id: collection.id,
+          userId: allowed.id,
+        },
+      }
+    );
     // May return 200, 400, or 404 depending on implementation
     expect([200, 400, 404]).toContain(doubleRemove.status);
-  })
+  });
 
-  it('should update permission when re-adding a member with a different level', async () => {
+  it("should update permission when re-adding a member with a different level", async () => {
     const team = await buildTeam();
     const admin = await buildAdmin({ teamId: team.id });
     const user = await buildUser({ teamId: team.id });
@@ -316,12 +352,14 @@ describe("#collections.permissions", () => {
     expect(readInfo.status).toEqual(200);
 
     // Read member cannot create a document in the collection
-    const readDoc = await server.post('/api/documents.create', user, {
+    const readDoc = await server.post("/api/documents.create", user, {
       body: {
         id: crypto.randomUUID(),
         collectionId: collection.id,
         title: "Read doc",
-        content: [{ type: "paragraph", content: [{ type: "text", text: "Test" }] }],
+        content: [
+          { type: "paragraph", content: [{ type: "text", text: "Test" }] },
+        ],
       },
     });
     expect(readDoc.status).toEqual(403);
@@ -345,18 +383,20 @@ describe("#collections.permissions", () => {
     );
 
     // ReadWrite member can now create a document in the collection
-    const readWriteDoc = await server.post('/api/documents.create', user, {
+    const readWriteDoc = await server.post("/api/documents.create", user, {
       body: {
         id: crypto.randomUUID(),
         collectionId: collection.id,
         title: "ReadWrite doc",
-        content: [{ type: "paragraph", content: [{ type: "text", text: "Test" }] }],
+        content: [
+          { type: "paragraph", content: [{ type: "text", text: "Test" }] },
+        ],
       },
     });
     expect(readWriteDoc.status).toEqual(200);
-  })
+  });
 
-  it('should allow info access via group membership', async () => {
+  it("should allow info access via group membership", async () => {
     const team = await buildTeam();
     const admin = await buildAdmin({ teamId: team.id });
     const groupUser = await buildUser({ teamId: team.id });
@@ -377,15 +417,101 @@ describe("#collections.permissions", () => {
     });
 
     // Group member can access collection info
-    const groupUserInfo = await server.post("/api/collections.info", groupUser, {
-      body: { id: collection.id },
-    });
+    const groupUserInfo = await server.post(
+      "/api/collections.info",
+      groupUser,
+      {
+        body: { id: collection.id },
+      }
+    );
     expect(groupUserInfo.status).toEqual(200);
 
     // Non-member cannot access collection info
-    const nonMemberInfo = await server.post("/api/collections.info", nonMember, {
+    const nonMemberInfo = await server.post(
+      "/api/collections.info",
+      nonMember,
+      {
+        body: { id: collection.id },
+      }
+    );
+    expect(nonMemberInfo.status).toEqual(403);
+  });
+
+  /**
+   * Scenario: group access revoked.
+   * Given a private collection shared with a group (Read) and a group member,
+   * when the group is removed from the collection, then the member gets 403.
+   */
+  it("should revoke access when the group is removed from the collection", async () => {
+    const team = await buildTeam();
+    const admin = await buildAdmin({ teamId: team.id });
+    const groupUser = await buildUser({ teamId: team.id });
+    const collection = await buildCollection({
+      teamId: team.id,
+      userId: admin.id,
+      permission: null,
+    });
+    const group = await buildGroup({ teamId: team.id });
+    await group.$add("user", groupUser, { through: { createdById: admin.id } });
+    await collection.$add("group", group, {
+      through: { permission: CollectionPermission.Read, createdById: admin.id },
+    });
+
+    const before = await server.post("/api/collections.info", groupUser, {
       body: { id: collection.id },
     });
-    expect(nonMemberInfo.status).toEqual(403);
-  })
+    expect(before.status).toEqual(200);
+
+    const removeRes = await server.post(
+      "/api/collections.remove_group",
+      admin,
+      {
+        body: { id: collection.id, groupId: group.id },
+      }
+    );
+    expect(removeRes.status).toEqual(200);
+
+    const after = await server.post("/api/collections.info", groupUser, {
+      body: { id: collection.id },
+    });
+    expect(after.status).toEqual(403);
+  });
+
+  /**
+   * Scenario: direct membership removed but group membership remains.
+   * Given a user with direct ReadWrite and group Read access, when the direct
+   * membership is removed, then the user keeps access through the group.
+   */
+  it("should keep group access after direct membership is removed", async () => {
+    const team = await buildTeam();
+    const admin = await buildAdmin({ teamId: team.id });
+    const user = await buildUser({ teamId: team.id });
+    const collection = await buildCollection({
+      teamId: team.id,
+      userId: admin.id,
+      permission: null,
+    });
+    const group = await buildGroup({ teamId: team.id });
+    await group.$add("user", user, { through: { createdById: admin.id } });
+    await collection.$add("group", group, {
+      through: { permission: CollectionPermission.Read, createdById: admin.id },
+    });
+    await server.post("/api/collections.add_user", admin, {
+      body: {
+        id: collection.id,
+        userId: user.id,
+        permission: CollectionPermission.ReadWrite,
+      },
+    });
+
+    const removeRes = await server.post("/api/collections.remove_user", admin, {
+      body: { id: collection.id, userId: user.id },
+    });
+    expect(removeRes.status).toEqual(200);
+
+    const info = await server.post("/api/collections.info", user, {
+      body: { id: collection.id },
+    });
+    expect(info.status).toEqual(200);
+  });
 });

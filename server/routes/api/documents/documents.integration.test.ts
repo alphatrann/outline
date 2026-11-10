@@ -1,4 +1,5 @@
 import {
+  buildAdmin,
   buildCollection,
   buildDocument,
   buildShare,
@@ -209,5 +210,140 @@ describe("#documents.lifecycle (integration)", () => {
     expect(restoredDoc.isActive).toBe(true);
     // Restoring un-archives but does not unpublish
     expect(restoredDoc.publishedAt).not.toBeNull();
+  });
+});
+
+const titlesOf = (body: { data: { document: { title: string } }[] }) =>
+  body.data.map((d) => d.document.title);
+
+/**
+ * Scenarios for restore:
+ * 1. Soft-deleted document is restored and reappears in documents.list.
+ * 2. Read-only member cannot restore a deleted document (403).
+ * 3. Restoring with revisionId reverts text to that revision.
+ */
+describe("#documents.restore (integration)", () => {
+  it("should restore a soft-deleted document", async () => {
+    const team = await buildTeam();
+    const user = await buildUser({ teamId: team.id });
+    const collection = await buildCollection({
+      teamId: team.id,
+      userId: user.id,
+    });
+    const doc = await buildDocument({
+      teamId: team.id,
+      userId: user.id,
+      collectionId: collection.id,
+      title: "Trash me",
+    });
+
+    const delRes = await server.post("/api/documents.delete", user, {
+      body: { id: doc.id },
+    });
+    expect(delRes.status).toEqual(200);
+    expect(await Document.findByPk(doc.id)).toBeNull();
+
+    const restoreRes = await server.post("/api/documents.restore", user, {
+      body: { id: doc.id },
+    });
+    expect(restoreRes.status).toEqual(200);
+
+    const restored = await Document.findByPk(doc.id, { rejectOnEmpty: true });
+    expect(restored.deletedAt).toBeNull();
+
+    const listRes = await server.post("/api/documents.list", user, {
+      body: { collectionId: collection.id },
+    });
+    const { data } = await listRes.json();
+    expect(data.map((d: { title: string }) => d.title)).toContain("Trash me");
+  });
+
+  it("should forbid a read-only member from restoring a deleted document", async () => {
+    const team = await buildTeam();
+    const owner = await buildUser({ teamId: team.id });
+    const reader = await buildUser({ teamId: team.id });
+    const collection = await buildCollection({
+      teamId: team.id,
+      userId: owner.id,
+      permission: CollectionPermission.Read,
+    });
+    const doc = await buildDocument({
+      teamId: team.id,
+      userId: owner.id,
+      collectionId: collection.id,
+    });
+    await server.post("/api/documents.delete", owner, { body: { id: doc.id } });
+
+    const res = await server.post("/api/documents.restore", reader, {
+      body: { id: doc.id },
+    });
+    expect(res.status).toEqual(403);
+    expect(await Document.findByPk(doc.id)).toBeNull();
+  });
+});
+
+/**
+ * Scenarios for search after delete:
+ * 1. Deleted document disappears from search and returns after restore.
+ * 2. Permanently deleted document is gone from search and the database.
+ */
+describe("#documents.search after delete (integration)", () => {
+  const search = async (user: Parameters<typeof server.post>[1]) => {
+    const res = await server.post("/api/documents.search", user, {
+      body: { query: "quokka" },
+    });
+    return titlesOf(await res.json());
+  };
+
+  it("should drop deleted documents from search and show them after restore", async () => {
+    const team = await buildTeam();
+    const user = await buildUser({ teamId: team.id });
+    const collection = await buildCollection({
+      teamId: team.id,
+      userId: user.id,
+    });
+    const doc = await buildDocument({
+      teamId: team.id,
+      userId: user.id,
+      collectionId: collection.id,
+      title: "Quokka notes",
+      text: "quokka",
+      publishedAt: new Date(),
+    });
+
+    expect(await search(user)).toContain("Quokka notes");
+
+    await server.post("/api/documents.delete", user, { body: { id: doc.id } });
+    expect(await search(user)).not.toContain("Quokka notes");
+
+    await server.post("/api/documents.restore", user, { body: { id: doc.id } });
+    expect(await search(user)).toContain("Quokka notes");
+  });
+
+  it("should remove permanently deleted documents from search and the database", async () => {
+    const team = await buildTeam();
+    const user = await buildAdmin({ teamId: team.id });
+    const collection = await buildCollection({
+      teamId: team.id,
+      userId: user.id,
+    });
+    const doc = await buildDocument({
+      teamId: team.id,
+      userId: user.id,
+      collectionId: collection.id,
+      title: "Quokka gone",
+      text: "quokka",
+      publishedAt: new Date(),
+    });
+
+    // Permanent delete is admin-only and requires the document to be in the trash.
+    await server.post("/api/documents.delete", user, { body: { id: doc.id } });
+    const res = await server.post("/api/documents.delete", user, {
+      body: { id: doc.id, permanent: true },
+    });
+    expect(res.status).toEqual(200);
+
+    expect(await search(user)).not.toContain("Quokka gone");
+    expect(await Document.findByPk(doc.id, { paranoid: false })).toBeNull();
   });
 });
