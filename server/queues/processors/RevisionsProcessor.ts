@@ -23,12 +23,6 @@ export default class RevisionsProcessor extends BaseProcessor {
           return;
         }
 
-        const document = await Document.findByPk(event.documentId, {
-          paranoid: false,
-          rejectOnEmpty: true,
-        });
-        const previous = await Revision.findLatest(document.id);
-
         // Only read attribution included in a persisted snapshot. Revisions
         // created from the API and legacy events have no cutoff and must not
         // consume pending edits.
@@ -38,35 +32,45 @@ export default class RevisionsProcessor extends BaseProcessor {
             : undefined;
         const key = Document.getCollaboratorKey(event.documentId);
 
-        // we don't create revisions if identical to previous revision, this can happen if a manual
-        // revision was created from another service or user.
-        if (
-          previous &&
-          isEqual(document.content, previous.content) &&
-          document.title === previous.title
-        ) {
-          // The snapshot's edits are already in a revision, so consume their
-          // attribution rather than carry it into the next revision.
-          if (sequence !== undefined) {
-            await Redis.defaultClient.zremrangebyscore(key, "-inf", sequence);
+        await sequelize.transaction(async (transaction) => {
+          // Lock the document row so concurrent events for the same document
+          // run the check-then-insert below one at a time. Without it both can
+          // see "no previous revision" and each insert a duplicate.
+          const document = await Document.findByPk(event.documentId, {
+            paranoid: false,
+            rejectOnEmpty: true,
+            transaction,
+            // `of` limits the lock to documents; the default scope left-joins users.
+            lock: { level: transaction.LOCK.UPDATE, of: Document },
+          });
+          const previous = await Revision.findLatest(document.id, {
+            transaction,
+          });
+
+          // we don't create revisions if identical to previous revision, this can happen if a manual
+          // revision was created from another service or user.
+          if (
+            previous &&
+            isEqual(document.content, previous.content) &&
+            document.title === previous.title
+          ) {
+            return;
           }
-          return;
-        }
 
-        const collaboratorIds =
-          sequence === undefined
-            ? []
-            : await Redis.defaultClient.zrangebyscore(key, "-inf", sequence);
+          const collaboratorIds =
+            sequence === undefined
+              ? []
+              : await Redis.defaultClient.zrangebyscore(key, "-inf", sequence);
 
-        await new DocumentUpdateTextTask().schedule(event);
+          await new DocumentUpdateTextTask().schedule(event);
 
-        const user = await User.findByPk(event.actorId, {
-          paranoid: false,
-          rejectOnEmpty: true,
-        });
+          const user = await User.findByPk(event.actorId, {
+            paranoid: false,
+            rejectOnEmpty: true,
+            transaction,
+          });
 
-        await sequelize.transaction((transaction) =>
-          Revision.createFromDocument(
+          await Revision.createFromDocument(
             createContext({
               user,
               authType: event.authType,
@@ -75,11 +79,13 @@ export default class RevisionsProcessor extends BaseProcessor {
             }),
             document,
             collaboratorIds
-          )
-        );
+          );
+        });
+
+        // The snapshot's edits are now in a revision (new or existing), so
+        // consume their attribution. A subsequent edit by the same user has a
+        // higher score and survives; on failure above, attribution stays intact.
         if (sequence !== undefined) {
-          // A subsequent edit by the same user has a higher score and survives
-          // this cleanup. Leave all attribution intact if revision creation fails.
           await Redis.defaultClient.zremrangebyscore(key, "-inf", sequence);
         }
         break;

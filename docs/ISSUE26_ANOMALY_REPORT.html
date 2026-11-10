@@ -1,0 +1,388 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Issue #26 · Anomaly Report (Deliverable G)</title>
+    <style>
+      body {
+        font:
+          16px/1.55 system-ui,
+          -apple-system,
+          "Segoe UI",
+          sans-serif;
+        color: #1f2328;
+        max-width: 900px;
+        margin: 2rem auto;
+        padding: 0 1rem;
+      }
+      h1 {
+        font-size: 1.8rem;
+        margin: 0 0 0.25rem;
+      }
+      h2 {
+        font-size: 1.25rem;
+        margin: 2rem 0 0.4rem;
+        border-bottom: 1px solid #d0d7de;
+        padding-bottom: 0.3rem;
+      }
+      h3 {
+        font-size: 1.02rem;
+        margin: 1.2rem 0 0.3rem;
+      }
+      code,
+      pre {
+        background: #f6f8fa;
+        border-radius: 6px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      code {
+        padding: 0.12em 0.35em;
+        font-size: 0.9em;
+      }
+      pre {
+        padding: 0.9rem 1rem;
+        overflow-x: auto;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        font-size: 0.93rem;
+      }
+      th,
+      td {
+        border: 1px solid #d0d7de;
+        padding: 0.4rem 0.65rem;
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        background: #f6f8fa;
+      }
+      .meta {
+        color: #57606a;
+      }
+      .note {
+        background: #fff8c5;
+        border-left: 4px solid #d97706;
+        padding: 0.7rem 1rem;
+      }
+      ul,
+      ol {
+        padding-left: 1.3rem;
+      }
+      li {
+        margin: 0.25rem 0;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Issue #26 — Anomaly &amp; Flaky-Test Report (Deliverable G)</h1>
+    <p class="meta">
+      Branch <code>tests/issue-26</code> · commit <code>f83c131a9</code> · Date
+      2026-11-10 · Owner T (alphatrann) · Method: severity × priority matrix
+      from the lecture.
+    </p>
+
+    <h2>1. Summary</h2>
+    <table>
+      <tr>
+        <th>Item</th>
+        <th>Result</th>
+      </tr>
+      <tr>
+        <td>Integration tests</td>
+        <td>
+          45 (was 20). Added: documents move/update/delete, share edge cases,
+          cross-team isolation.
+        </td>
+      </tr>
+      <tr>
+        <td>Repeated runs</td>
+        <td>
+          Before fix: 5 runs, 4 green, 1 red (BUG-1). After fix: 5 runs, 5 green
+          (45 / 45).
+        </td>
+      </tr>
+      <tr>
+        <td>Anomalies found</td>
+        <td>
+          1 — BUG-1, severity <b>low</b>, priority <b>low</b>. Fixed (row lock).
+        </td>
+      </tr>
+      <tr>
+        <td>Security findings</td>
+        <td>
+          None. Cross-team reads/writes/shares and share-scope escapes were all
+          denied.
+        </td>
+      </tr>
+    </table>
+
+    <h2>
+      2. BUG-1 — Concurrent identical <code>documents.update</code> calls create
+      duplicate revisions
+    </h2>
+
+    <h3>Environment</h3>
+    <table>
+      <tr>
+        <td>OS / arch</td>
+        <td>macOS 27.0, arm64</td>
+      </tr>
+      <tr>
+        <td>Node / Yarn</td>
+        <td>v24.21.0 / 4.18.1</td>
+      </tr>
+      <tr>
+        <td>Docker</td>
+        <td>
+          29.5.2 (Testcontainers: <code>postgres:17</code>,
+          <code>redis:8</code>)
+        </td>
+      </tr>
+      <tr>
+        <td>Vitest</td>
+        <td>4.1.11, project <code>server-integration</code> (serial files)</td>
+      </tr>
+      <tr>
+        <td>Outline base</td>
+        <td>pinned SHA 05ef55e, plus local commit f83c131a9</td>
+      </tr>
+    </table>
+
+    <h3>Steps to reproduce</h3>
+    <ol>
+      <li>
+        Start the worker (<code>initWorker()</code>) so Bull queues are
+        consumed.
+      </li>
+      <li>
+        Create a team, user and a published document titled <code>T</code> with
+        text <code>C</code>.
+      </li>
+      <li>
+        Send two identical requests <em>concurrently</em>:
+        <pre>
+await Promise.all([
+  server.post("/api/documents.update", user, { body: { id, title: "T", text: "C", done: true } }),
+  server.post("/api/documents.update", user, { body: { id, title: "T", text: "C", done: true } }),
+]);</pre>
+      </li>
+      <li>
+        Wait about 3 s, then
+        <code>Revision.count({ where: { documentId } })</code>.
+      </li>
+    </ol>
+    <p>
+      Reproduced <b>8 / 8</b> times (log: <code>logs/issue-26/repro.txt</code>).
+      Seen as a failure in <b>1 / 5</b> full-suite runs, where the original test
+      fired the two updates back to back without waiting.
+    </p>
+
+    <h3>Expected</h3>
+    <p>
+      One revision. <code>RevisionsProcessor</code> skips creating a revision
+      when the document equals the latest revision (title and content), so
+      identical updates should collapse to a single row.
+    </p>
+
+    <h3>Actual</h3>
+    <pre>
+FAIL revisions.integration.test.ts &gt; #revisions (integration)
+  &gt; should not create duplicate revisions for identical updates
+AssertionError: expected 2 to deeply equal 1      (revisions.integration.test.ts:128)</pre>
+    <p>Two revision rows with identical title and content.</p>
+
+    <h3>Root cause analysis</h3>
+    <p>
+      <code>server/queues/processors/RevisionsProcessor.ts</code> does a
+      check-then-insert: <code>Revision.findLatest()</code>, compare, then
+      <code>Revision.createFromDocument()</code> in a separate transaction, with
+      no lock. Two events processed at the same time both see "no previous
+      revision" and both insert. The dedup is therefore only reliable when
+      events are processed one after another.
+    </p>
+
+    <h3>Classification</h3>
+    <table>
+      <tr>
+        <th>Axis</th>
+        <th>Rating</th>
+        <th>Reason</th>
+      </tr>
+      <tr>
+        <td>Severity</td>
+        <td>Low</td>
+        <td>One extra history row. No data loss, leak or permission bypass.</td>
+      </tr>
+      <tr>
+        <td>Priority</td>
+        <td>Low</td>
+        <td>
+          Needs two simultaneous identical API saves. Editor autosave takes the
+          debounced path, not this one.
+        </td>
+      </tr>
+    </table>
+    <p>
+      <b>Matrix action:</b> low / low → normally log only. The fix was small, so
+      it was applied anyway and kept with a regression test.
+    </p>
+
+    <h3>Fix applied</h3>
+    <p>
+      In <code>RevisionsProcessor</code>, the read-then-insert now runs inside
+      one transaction that first takes a row lock on the document (<code
+        >SELECT … FOR UPDATE OF "document"</code
+      >). A second event for the same document waits for the first to commit,
+      then sees its revision and skips.
+      <code>Revision.findLatest()</code> gained an optional
+      <code>transaction</code> argument so the check runs inside that
+      transaction. The Redis attribution cleanup stays after the commit, as
+      before.
+    </p>
+    <p>
+      <b>Why a row lock, not an advisory lock or isolation level:</b> the
+      document row always exists, so it is a natural lock target and matches how
+      <code>collections.add_user</code> locks its membership row.
+      <code>REPEATABLE READ</code> gives each transaction a snapshot but does
+      not make one wait for the other, so both would still insert;
+      <code>SERIALIZABLE</code> would need retry handling across the app. An
+      advisory lock stays as the fallback if this lock contends with other
+      document writes.
+    </p>
+    <p>
+      <b>Pitfall found while fixing:</b> a plain
+      <code>lock: UPDATE</code> failed with
+      <code
+        >FOR UPDATE cannot be applied to the nullable side of an outer
+        join</code
+      >, because the <code>Document</code> default scope left-joins
+      <code>users</code>. The lock is restricted with <code>of: Document</code>.
+    </p>
+
+    <h3>Test handling</h3>
+    <ul>
+      <li>
+        The original test was <b>flaky by design</b> (it raced the bug). It now
+        sends the updates sequentially and covers the sequential dedup path.
+      </li>
+      <li>
+        New regression test
+        <code
+          >should not create duplicate revisions for concurrent identical
+          updates</code
+        >
+        fails without the fix (<code>expected 2 to deeply equal 1</code>) and
+        passes with it.
+      </li>
+      <li>
+        <code>shortcut:</code> both tests wait a fixed 2–3 s for the queue to
+        settle, since no job-done signal is exposed; revisit if they become slow
+        or flaky.
+      </li>
+    </ul>
+
+    <h2>3. Flaky-test analysis</h2>
+    <table>
+      <tr>
+        <th>Run</th>
+        <th>Result</th>
+        <th>Duration</th>
+      </tr>
+      <tr>
+        <td>1</td>
+        <td>44 / 44 pass</td>
+        <td>30.9 s</td>
+      </tr>
+      <tr>
+        <td>2</td>
+        <td>44 / 44 pass</td>
+        <td>29.7 s</td>
+      </tr>
+      <tr>
+        <td>3</td>
+        <td>44 / 44 pass</td>
+        <td>28.5 s</td>
+      </tr>
+      <tr>
+        <td>4</td>
+        <td><b>1 fail</b> (BUG-1), 43 pass</td>
+        <td>34.6 s</td>
+      </tr>
+      <tr>
+        <td>5</td>
+        <td>44 / 44 pass</td>
+        <td>28.4 s</td>
+      </tr>
+    </table>
+    <p>
+      Only one test was non-deterministic, and its cause is BUG-1, not harness
+      timing. Durations are stable (28–35 s). After the fix, 5 further full runs
+      were all green (45 / 45, 31.5–32.2 s each; logs in
+      <code>logs/issue-26/after-fix/</code>).
+    </p>
+
+    <h2>4. Odd behaviours (low / low, log only)</h2>
+    <ul>
+      <li>
+        Cross-team and share-scope denials return 403 or 404 depending on the
+        path; the new tests accept either status and assert that no data is
+        exposed.
+      </li>
+    </ul>
+
+    <h2>
+      5. Coverage (line %, each project run on its own over server + shared +
+      app + plugins)
+    </h2>
+    <table>
+      <tr>
+        <th>Project</th>
+        <th>Tests</th>
+        <th>Lines</th>
+      </tr>
+      <tr>
+        <td>server-integration</td>
+        <td>44 pass</td>
+        <td>8.4 %</td>
+      </tr>
+      <tr>
+        <td>shared (node + jsdom)</td>
+        <td>1524 pass, 22 skipped</td>
+        <td>6.0 %</td>
+      </tr>
+      <tr>
+        <td>app</td>
+        <td>248 pass</td>
+        <td>4.8 %</td>
+      </tr>
+    </table>
+    <p class="note">
+      Percentages are low because every run is measured against the whole
+      repository (~61k lines), not just the code that project targets. They are
+      not additive; a merged figure is needed for a single total.
+    </p>
+
+    <h2>6. Limitations</h2>
+    <ul>
+      <li>
+        Concurrent-move test (A8) passed in all runs, but only about 5
+        repetitions were made.
+      </li>
+      <li>
+        Out of scope per the K16 plan: realtime Y.js, Elastic search,
+        OAuth/OIDC, attachments and imports, UI.
+      </li>
+    </ul>
+
+    <h2>7. Evidence</h2>
+    <p>
+      Local, git-ignored:
+      <code>logs/issue-26/</code> (<code>integration-run1..5.log/.xml</code>,
+      <code>repro.txt</code>, <code>coverage-*.log</code>,
+      <code>cov-*/</code> HTML reports).
+    </p>
+  </body>
+</html>

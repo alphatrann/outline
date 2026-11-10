@@ -111,9 +111,7 @@ describe("#revisions (integration)", () => {
         },
       });
 
-    // Send the updates one after another: concurrent identical updates race in
-    // RevisionsProcessor (both read "no previous revision") and store two rows,
-    // see the issue #26 analysis. This test covers the sequential dedup path.
+    // Sequential path; the concurrent path is covered by the next test.
     await update();
     await waitForLatestRevision(document.id, 30000);
     await update();
@@ -127,6 +125,38 @@ describe("#revisions (integration)", () => {
 
     const revision = await Revision.findLatest(document.id);
     expect(JSON.stringify(revision!.content)).toContain("Same content");
+  });
+
+  it("should not create duplicate revisions for concurrent identical updates", async () => {
+    const team = await buildTeam();
+    const user = await buildUser({ teamId: team.id });
+    const document = await buildDocument({
+      teamId: team.id,
+      userId: user.id,
+      title: "Same title",
+      text: "Same content",
+    });
+    const body = {
+      id: document.id,
+      title: "Same title",
+      text: "Same content",
+      done: true,
+    };
+
+    // Regression for issue #26 BUG-1: both events used to see "no previous
+    // revision" and each insert one. The document row lock serialises them.
+    await Promise.all([
+      server.post("/api/documents.update", user, { body }),
+      server.post("/api/documents.update", user, { body }),
+    ]);
+    await waitForLatestRevision(document.id, 30000);
+
+    // shortcut: fixed settle time, the queue exposes no "job done" signal here.
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+
+    expect(
+      await Revision.count({ where: { documentId: document.id } })
+    ).toEqual(1);
   });
 
   it("should restore a document to a specific revision", async () => {
