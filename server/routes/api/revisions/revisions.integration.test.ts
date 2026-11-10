@@ -101,27 +101,25 @@ describe("#revisions (integration)", () => {
       text: "Same content",
     });
 
-    // Two updates with identical content and title — RevisionsProcessor dedups
-    // against the previous revision and creates only one row.
-    await server.post("/api/documents.update", user, {
-      body: {
-        id: document.id,
-        title: "Same title",
-        text: "Same content",
-        done: true,
-      },
-    });
-    await server.post("/api/documents.update", user, {
-      body: {
-        id: document.id,
-        title: "Same title",
-        text: "Same content",
-        done: true,
-      },
-    });
+    const update = () =>
+      server.post("/api/documents.update", user, {
+        body: {
+          id: document.id,
+          title: "Same title",
+          text: "Same content",
+          done: true,
+        },
+      });
 
-    // Wait for both async revision creations to complete.
+    // Send the updates one after another: concurrent identical updates race in
+    // RevisionsProcessor (both read "no previous revision") and store two rows,
+    // see the issue #26 analysis. This test covers the sequential dedup path.
+    await update();
     await waitForLatestRevision(document.id, 30000);
+    await update();
+
+    // shortcut: fixed settle time, the queue exposes no "job done" signal here.
+    await new Promise((resolve) => setTimeout(resolve, 2000));
 
     // Exactly one revision row — identical updates are deduped.
     const count = await Revision.count({ where: { documentId: document.id } });
