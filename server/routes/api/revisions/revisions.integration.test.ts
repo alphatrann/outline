@@ -72,11 +72,9 @@ describe("#revisions (integration)", () => {
     expect(res.status).toEqual(200);
     expect(body.data.title).toEqual("Updated title");
 
-    // Revision does not exist synchronously after the API returns — it is
-    // created by the background queue worker.
-    expect(await Revision.count()).toEqual(0);
-
-    // Worker processes the event asynchronously; poll until visible.
+    // The revision is created by the background queue worker. Do not assert it
+    // is absent here: on a fast runner the worker finishes first (flaky in CI).
+    // Poll until it is visible.
     const revision = await waitForLatestRevision(document.id);
 
     expect(revision.title).toEqual("Updated title");

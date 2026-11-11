@@ -107,7 +107,8 @@
       <tr>
         <td>Anomalies found</td>
         <td>
-          1 — BUG-1, severity <b>low</b>, priority <b>low</b>. Fixed (row lock).
+          BUG-1 (low / low, fixed with a row lock) and flaky test FLAKE-2 (low /
+          high, test race, fixed).
         </td>
       </tr>
       <tr>
@@ -318,10 +319,66 @@ AssertionError: expected 2 to deeply equal 1      (revisions.integration.test.ts
       </tr>
     </table>
     <p>
-      Only one test was non-deterministic, and its cause is BUG-1, not harness
-      timing. Durations are stable (28–35 s). After the fix, 5 further full runs
-      were all green (45 / 45, 31.5–32.2 s each; logs in
+      Local runs showed one flaky test (BUG-1). CI on PR #42 then exposed a
+      second, <b>FLAKE-2</b>, that local runs never hit. Durations are stable
+      (28–35 s locally). After the BUG-1 fix, 5 further local full runs were all
+      green (45 / 45, 31.5–32.2 s each; logs in
       <code>logs/issue-26/after-fix/</code>).
+    </p>
+
+    <h3>
+      FLAKE-2 — "should create a revision asynchronously" asserts the worker has
+      not run
+    </h3>
+    <table>
+      <tr>
+        <td>Where</td>
+        <td>
+          <code>revisions.integration.test.ts:77</code> (from the issue-19
+          tests, not the new ones); failed once in CI, never locally in about 15
+          runs
+        </td>
+      </tr>
+      <tr>
+        <td>Actual</td>
+        <td><code>AssertionError: expected 1 to deeply equal +0</code></td>
+      </tr>
+      <tr>
+        <td>Expected</td>
+        <td>
+          <code>Revision.count()</code> is 0 right after
+          <code>documents.update</code> returns, because the worker creates the
+          revision in the background
+        </td>
+      </tr>
+      <tr>
+        <td>Root cause</td>
+        <td>
+          The assertion checks that async work has <em>not</em> happened yet. It
+          only holds if the test is faster than the worker; a fast CI runner
+          reverses that. It is a test race, not a product bug.
+        </td>
+      </tr>
+      <tr>
+        <td>Classification</td>
+        <td>
+          Severity low (test only, no product impact), priority high (it blocks
+          CI on every PR touching server code) → quick fix
+        </td>
+      </tr>
+      <tr>
+        <td>Fix</td>
+        <td>
+          Removed the "not yet created" assertion. The polling
+          (<code>waitForLatestRevision</code>) that follows already proves the
+          revision is created.
+        </td>
+      </tr>
+    </table>
+    <p>
+      <b>Lesson:</b> the 5-run local check did not catch it. CI hardware has
+      different timing, so a green local streak is evidence, not proof, of no
+      flakiness.
     </p>
 
     <h2>4. Odd behaviours (low / low, log only)</h2>
