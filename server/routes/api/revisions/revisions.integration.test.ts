@@ -72,11 +72,9 @@ describe("#revisions (integration)", () => {
     expect(res.status).toEqual(200);
     expect(body.data.title).toEqual("Updated title");
 
-    // Revision does not exist synchronously after the API returns — it is
-    // created by the background queue worker.
-    expect(await Revision.count()).toEqual(0);
-
-    // Worker processes the event asynchronously; poll until visible.
+    // The revision is created by the background queue worker. Do not assert it
+    // is absent here: on a fast runner the worker finishes first (flaky in CI).
+    // Poll until it is visible.
     const revision = await waitForLatestRevision(document.id);
 
     expect(revision.title).toEqual("Updated title");
@@ -101,27 +99,23 @@ describe("#revisions (integration)", () => {
       text: "Same content",
     });
 
-    // Two updates with identical content and title — RevisionsProcessor dedups
-    // against the previous revision and creates only one row.
-    await server.post("/api/documents.update", user, {
-      body: {
-        id: document.id,
-        title: "Same title",
-        text: "Same content",
-        done: true,
-      },
-    });
-    await server.post("/api/documents.update", user, {
-      body: {
-        id: document.id,
-        title: "Same title",
-        text: "Same content",
-        done: true,
-      },
-    });
+    const update = () =>
+      server.post("/api/documents.update", user, {
+        body: {
+          id: document.id,
+          title: "Same title",
+          text: "Same content",
+          done: true,
+        },
+      });
 
-    // Wait for both async revision creations to complete.
+    // Sequential path; the concurrent path is covered by the next test.
+    await update();
     await waitForLatestRevision(document.id, 30000);
+    await update();
+
+    // shortcut: fixed settle time, the queue exposes no "job done" signal here.
+    await new Promise((resolve) => setTimeout(resolve, 2000));
 
     // Exactly one revision row — identical updates are deduped.
     const count = await Revision.count({ where: { documentId: document.id } });
@@ -129,6 +123,38 @@ describe("#revisions (integration)", () => {
 
     const revision = await Revision.findLatest(document.id);
     expect(JSON.stringify(revision!.content)).toContain("Same content");
+  });
+
+  it("should not create duplicate revisions for concurrent identical updates", async () => {
+    const team = await buildTeam();
+    const user = await buildUser({ teamId: team.id });
+    const document = await buildDocument({
+      teamId: team.id,
+      userId: user.id,
+      title: "Same title",
+      text: "Same content",
+    });
+    const body = {
+      id: document.id,
+      title: "Same title",
+      text: "Same content",
+      done: true,
+    };
+
+    // Regression for issue #26 BUG-1: both events used to see "no previous
+    // revision" and each insert one. The document row lock serialises them.
+    await Promise.all([
+      server.post("/api/documents.update", user, { body }),
+      server.post("/api/documents.update", user, { body }),
+    ]);
+    await waitForLatestRevision(document.id, 30000);
+
+    // shortcut: fixed settle time, the queue exposes no "job done" signal here.
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+
+    expect(
+      await Revision.count({ where: { documentId: document.id } })
+    ).toEqual(1);
   });
 
   it("should restore a document to a specific revision", async () => {

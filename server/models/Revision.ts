@@ -1,4 +1,8 @@
-import type { InferAttributes, InferCreationAttributes } from "sequelize";
+import type {
+  InferAttributes,
+  InferCreationAttributes,
+  Transaction,
+} from "sequelize";
 import { Op } from "sequelize";
 import {
   AllowNull,
@@ -159,14 +163,19 @@ class Revision extends ParanoidModel<
    * Find the latest revision for a given document
    *
    * @param documentId The document id to find the latest revision for
+   * @param options Optional transaction to run the query in.
    * @returns A Promise that resolves to a Revision model
    */
-  static findLatest(documentId: string) {
+  static findLatest(
+    documentId: string,
+    options: { transaction?: Transaction | null } = {}
+  ) {
     return this.findOne({
       where: {
         documentId,
       },
       order: [["createdAt", "DESC"]],
+      transaction: options.transaction,
     });
   }
 

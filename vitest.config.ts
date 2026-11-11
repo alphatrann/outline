@@ -97,6 +97,18 @@ export default defineConfig({
     pool: "threads",
     // Unhandled promise rejections are logged but don't fail tests on their own.
     dangerouslyIgnoreUnhandledErrors: true,
+    coverage: {
+      provider: "v8" as const,
+      reporter: ["text-summary", "json-summary", "html"],
+      reportsDirectory: "coverage",
+      include: ["server/**", "shared/**", "app/**", "plugins/**"],
+      exclude: [
+        "**/*.test.{ts,tsx}",
+        "**/__mocks__/**",
+        "server/migrations/**",
+        "server/test/**",
+      ],
+    },
     projects: [
       {
         ...sharedConfig,

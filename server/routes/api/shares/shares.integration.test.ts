@@ -1,7 +1,9 @@
 import { Share } from "@server/models";
 import {
   buildAdmin,
+  buildCollection,
   buildDocument,
+  buildShare,
   buildGuestUser,
   buildTeam,
   buildUser,
@@ -93,5 +95,122 @@ describe("#shares (integration)", () => {
       where: { teamId: team.id, userId: guest.id },
     });
     expect(count).toEqual(0);
+  });
+});
+
+describe("#shares edge cases (integration)", () => {
+  async function setup() {
+    const team = await buildTeam();
+    const user = await buildUser({ teamId: team.id });
+    const collection = await buildCollection({
+      teamId: team.id,
+      userId: user.id,
+    });
+    const document = await buildDocument({
+      teamId: team.id,
+      userId: user.id,
+      collectionId: collection.id,
+      title: "Secret title",
+    });
+    return { team, user, collection, document };
+  }
+
+  const publicInfo = (id: string, shareId: string) =>
+    server.post("/api/documents.info", { body: { id, shareId } });
+
+  it("should not serve an unpublished share", async () => {
+    const { team, user, document } = await setup();
+    const share = await buildShare({
+      teamId: team.id,
+      userId: user.id,
+      documentId: document.id,
+      published: false,
+    });
+
+    const res = await publicInfo(document.id, share.id);
+    expect(res.status).toEqual(404);
+    expect(JSON.stringify(await res.json())).not.toContain("Secret title");
+  });
+
+  it("should not serve a share of an archived document", async () => {
+    const { team, user, document } = await setup();
+    const share = await buildShare({
+      teamId: team.id,
+      userId: user.id,
+      documentId: document.id,
+    });
+    await document.update({ archivedAt: new Date() });
+
+    const res = await publicInfo(document.id, share.id);
+    expect(res.status).toEqual(404);
+  });
+
+  it("should not serve shares of a suspended team", async () => {
+    const { team, user, document } = await setup();
+    const share = await buildShare({
+      teamId: team.id,
+      userId: user.id,
+      documentId: document.id,
+    });
+    await team.update({ suspendedAt: new Date() });
+
+    const res = await publicInfo(document.id, share.id);
+    expect(res.status).toEqual(404);
+  });
+
+  it("should refuse to create or serve shares when the collection disallows sharing", async () => {
+    const { team, user, collection, document } = await setup();
+    const share = await buildShare({
+      teamId: team.id,
+      userId: user.id,
+      documentId: document.id,
+    });
+    await collection.update({ sharing: false });
+
+    const served = await publicInfo(document.id, share.id);
+    expect(served.status).toEqual(403);
+
+    const before = await Share.count({ where: { teamId: team.id } });
+    const created = await server.post("/api/shares.create", user, {
+      body: { documentId: document.id, published: true },
+    });
+    expect(created.status).toEqual(403);
+    expect(await Share.count({ where: { teamId: team.id } })).toEqual(before);
+  });
+
+  it("should not expose a document outside the shared subtree", async () => {
+    const { team, user, collection, document } = await setup();
+    const outside = await buildDocument({
+      teamId: team.id,
+      userId: user.id,
+      collectionId: collection.id,
+      title: "Outside the share",
+    });
+    const share = await buildShare({
+      teamId: team.id,
+      userId: user.id,
+      documentId: document.id,
+      includeChildDocuments: true,
+    });
+
+    const res = await publicInfo(outside.id, share.id);
+    expect([403, 404]).toContain(res.status);
+    expect(JSON.stringify(await res.json())).not.toContain("Outside the share");
+  });
+
+  it("should stop serving a share after it is unpublished", async () => {
+    const { team, user, document } = await setup();
+    const share = await buildShare({
+      teamId: team.id,
+      userId: user.id,
+      documentId: document.id,
+    });
+    expect((await publicInfo(document.id, share.id)).status).toEqual(200);
+
+    const upd = await server.post("/api/shares.update", user, {
+      body: { id: share.id, published: false },
+    });
+    expect(upd.status).toEqual(200);
+    expect((await publicInfo(document.id, share.id)).status).toEqual(404);
   });
 });

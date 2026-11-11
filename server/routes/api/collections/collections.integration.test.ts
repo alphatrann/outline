@@ -1,7 +1,9 @@
 import { CollectionPermission } from "@shared/types";
+import { Collection, Document, Share, UserMembership } from "@server/models";
 import {
   buildAdmin,
   buildCollection,
+  buildDocument,
   buildGroup,
   buildTeam,
   buildUser,
@@ -513,5 +515,132 @@ describe("#collections.permissions", () => {
       body: { id: collection.id },
     });
     expect(info.status).toEqual(200);
+  });
+});
+
+describe("cross-team isolation (integration)", () => {
+  async function setup() {
+    const teamA = await buildTeam();
+    const teamB = await buildTeam();
+    const userA = await buildUser({ teamId: teamA.id });
+    const userB = await buildUser({ teamId: teamB.id });
+    const collectionA = await buildCollection({
+      teamId: teamA.id,
+      userId: userA.id,
+    });
+    const docA = await buildDocument({
+      teamId: teamA.id,
+      userId: userA.id,
+      collectionId: collectionA.id,
+      title: "Team A confidential",
+      text: "zebracrossing secret",
+    });
+    return { teamA, teamB, userA, userB, collectionA, docA };
+  }
+
+  const denied = (status: number) => expect([403, 404]).toContain(status);
+
+  it("should not let another team read a document", async () => {
+    const { userB, docA } = await setup();
+    const res = await server.post("/api/documents.info", userB, {
+      body: { id: docA.id },
+    });
+    denied(res.status);
+    expect(JSON.stringify(await res.json())).not.toContain("confidential");
+  });
+
+  it("should not leak another team's rows through list, search or collections", async () => {
+    const { userB, docA, collectionA } = await setup();
+    const list = await server.post("/api/documents.list", userB, { body: {} });
+    const search = await server.post("/api/documents.search", userB, {
+      body: { query: "zebracrossing" },
+    });
+    const cols = await server.post("/api/collections.list", userB, {
+      body: {},
+    });
+
+    expect(JSON.stringify((await list.json()).data)).not.toContain(docA.id);
+    expect((await search.json()).data).toEqual([]);
+    expect(JSON.stringify((await cols.json()).data)).not.toContain(
+      collectionA.id
+    );
+  });
+
+  it("should not let another team update, move or delete a document", async () => {
+    const { userB, docA, collectionA } = await setup();
+    const statuses = [
+      (
+        await server.post("/api/documents.update", userB, {
+          body: { id: docA.id, title: "Hacked" },
+        })
+      ).status,
+      (
+        await server.post("/api/documents.move", userB, {
+          body: { id: docA.id, collectionId: collectionA.id },
+        })
+      ).status,
+      (
+        await server.post("/api/documents.delete", userB, {
+          body: { id: docA.id },
+        })
+      ).status,
+    ];
+    statuses.forEach(denied);
+
+    const row = await Document.findByPk(docA.id, { rejectOnEmpty: true });
+    expect(row.title).toEqual("Team A confidential");
+    expect(row.deletedAt).toBeNull();
+  });
+
+  it("should not let a team nest its document under another team's parent", async () => {
+    const { userB, teamB, docA, collectionA } = await setup();
+    const collectionB = await buildCollection({
+      teamId: teamB.id,
+      userId: userB.id,
+    });
+    const docB = await buildDocument({
+      teamId: teamB.id,
+      userId: userB.id,
+      collectionId: collectionB.id,
+    });
+
+    const res = await server.post("/api/documents.move", userB, {
+      body: { id: docB.id, parentDocumentId: docA.id },
+    });
+    denied(res.status);
+
+    const row = await Document.findByPk(docB.id, { rejectOnEmpty: true });
+    expect(row.collectionId).toEqual(collectionB.id);
+    const reloaded = await Collection.findByPk(collectionA.id, {
+      includeDocumentStructure: true,
+      rejectOnEmpty: true,
+    });
+    expect(JSON.stringify(reloaded.documentStructure)).not.toContain(docB.id);
+  });
+
+  it("should not let another team share a document", async () => {
+    const { userB, teamA, docA } = await setup();
+    const res = await server.post("/api/shares.create", userB, {
+      body: { documentId: docA.id, published: true },
+    });
+    denied(res.status);
+    expect(await Share.count({ where: { teamId: teamA.id } })).toEqual(0);
+  });
+
+  it("should not add a user from another team to a collection", async () => {
+    const { userA, userB, collectionA } = await setup();
+    const res = await server.post("/api/collections.add_user", userA, {
+      body: {
+        id: collectionA.id,
+        userId: userB.id,
+        permission: CollectionPermission.Read,
+      },
+    });
+    denied(res.status);
+    expect(
+      await UserMembership.count({
+        where: { collectionId: collectionA.id, userId: userB.id },
+      })
+    ).toEqual(0);
   });
 });
