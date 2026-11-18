@@ -98,6 +98,33 @@ describe("#shares (integration)", () => {
   });
 });
 
+describe("#shares cross-team (integration)", () => {
+  it("should not let another team's member share a document", async () => {
+    const teamA = await buildTeam();
+    const teamB = await buildTeam();
+    const userA = await buildUser({ teamId: teamA.id });
+    const userB = await buildUser({ teamId: teamB.id });
+    const collection = await buildCollection({
+      teamId: teamA.id,
+      userId: userA.id,
+    });
+    const document = await buildDocument({
+      teamId: teamA.id,
+      userId: userA.id,
+      collectionId: collection.id,
+    });
+
+    const res = await server.post("/api/shares.create", userB, {
+      body: { documentId: document.id, published: true },
+    });
+
+    expect([403, 404]).toContain(res.status);
+    expect(await Share.count({ where: { documentId: document.id } })).toEqual(
+      0
+    );
+  });
+});
+
 describe("#shares edge cases (integration)", () => {
   async function setup() {
     const team = await buildTeam();

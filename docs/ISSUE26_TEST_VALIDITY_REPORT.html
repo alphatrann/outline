@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Issue #26 · Test Validity Report</title>
+    <style>
+      body {
+        font:
+          16px/1.55 system-ui,
+          -apple-system,
+          "Segoe UI",
+          sans-serif;
+        color: #1f2328;
+        max-width: 900px;
+        margin: 2rem auto;
+        padding: 0 1rem;
+      }
+      h1 {
+        font-size: 1.8rem;
+        margin: 0 0 0.25rem;
+      }
+      h2 {
+        font-size: 1.25rem;
+        margin: 2rem 0 0.4rem;
+        border-bottom: 1px solid #d0d7de;
+        padding-bottom: 0.3rem;
+      }
+      code,
+      pre {
+        background: #f6f8fa;
+        border-radius: 6px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      code {
+        padding: 0.12em 0.35em;
+        font-size: 0.9em;
+      }
+      pre {
+        padding: 0.9rem 1rem;
+        overflow-x: auto;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        font-size: 0.93rem;
+      }
+      th,
+      td {
+        border: 1px solid #d0d7de;
+        padding: 0.4rem 0.65rem;
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        background: #f6f8fa;
+      }
+      .meta {
+        color: #57606a;
+      }
+      .note {
+        background: #fff8c5;
+        border-left: 4px solid #d4a72c;
+        padding: 0.6rem 0.9rem;
+        border-radius: 4px;
+      }
+      .ok {
+        color: #1a7f37;
+        font-weight: 600;
+      }
+      .bad {
+        color: #cf222e;
+        font-weight: 600;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Issue #26 · Test Validity Report</h1>
+    <p class="meta">
+      Branch <code>tests/issue-26</code> · 5 integration files, 49 tests · all
+      passing · generated 2026-11-18
+    </p>
+
+    <h2>Verdict</h2>
+    <p>
+      The tests run and pass and catch real breakage, but mutation testing
+      (31.65% of mutants killed, measured on the original 45 tests) shows
+      they are still thin. Of 6 deliberate authorization/isolation breakages,
+      4 went unnoticed by the original 45 tests. Three of those are now
+      covered by 4 new tests (all pass against the real code, so the
+      permissions work); the fourth is a redundant check. Line coverage alone
+      would have hidden this (the policies show ~90%).
+    </p>
+
+    <h2>Method: three independent checks</h2>
+    <table>
+      <tr>
+        <th>Check</th>
+        <th>Question it answers</th>
+        <th>Command</th>
+      </tr>
+      <tr>
+        <td>1. Scoped coverage + thresholds</td>
+        <td>Do the tests execute the code they target, and does that stay true?</td>
+        <td><code>yarn test:integration:coverage</code></td>
+      </tr>
+      <tr>
+        <td>2. Mutation testing (Stryker)</td>
+        <td>Do the assertions detect changed behaviour?</td>
+        <td><code>yarn test:integration:mutation</code> (~54 min)</td>
+      </tr>
+      <tr>
+        <td>3. Manual deliberate breakage</td>
+        <td>Does a named test fail when a specific safeguard is removed?</td>
+        <td>edit production code, run integration suite, revert</td>
+      </tr>
+    </table>
+    <p class="meta">
+      Config: <code>vitest.integration.config.ts</code>,
+      <code>stryker.config.json</code>. The integration suite needs Docker
+      (testcontainers).
+    </p>
+
+    <h2>1. Scoped coverage</h2>
+    <p>
+      Whole-app coverage is 8.38% lines (5109 / 60914) and says nothing about
+      these tests. Scoped to the files they target:
+    </p>
+    <table>
+      <tr>
+        <th>File</th>
+        <th>Lines</th>
+        <th>Branches</th>
+      </tr>
+      <tr><td>policies/collection.ts</td><td>90.14%</td><td>88.88%</td></tr>
+      <tr><td>policies/document.ts</td><td>90.76%</td><td>77.41%</td></tr>
+      <tr><td>policies/share.ts</td><td>90.00%</td><td>100%</td></tr>
+      <tr><td>commands/documentMover.ts</td><td>84.31%</td><td>77.41%</td></tr>
+      <tr><td>commands/documentRestorer.ts</td><td>85.18%</td><td>72.22%</td></tr>
+      <tr><td>commands/documentCreator.ts</td><td>76.08%</td><td>66.03%</td></tr>
+      <tr><td>commands/documentUpdater.ts</td><td>68.00%</td><td>61.53%</td></tr>
+      <tr><td>routes/api/collections/collections.ts</td><td>44.70%</td><td>43.26%</td></tr>
+      <tr><td>routes/api/documents/documents.ts</td><td>32.31%</td><td>29.76%</td></tr>
+      <tr><td>routes/api/shares/shares.ts</td><td>28.28%</td><td>20.71%</td></tr>
+      <tr>
+        <td><strong>All scoped files</strong></td>
+        <td><strong>46.42% (616/1327)</strong></td>
+        <td><strong>43.86% (347/791)</strong></td>
+      </tr>
+    </table>
+    <p>
+      Route files are large and the tests only touch some endpoints, so low
+      route percentages are expected. Thresholds are floors set just below
+      these values (global 45 / 42; policies 88 / 75; commands 65 / 58; routes
+      28 / 20) and fail the run if coverage regresses. Coverage only proves
+      code <em>ran</em>, not that anything was asserted.
+    </p>
+
+    <h2>2. Mutation testing</h2>
+    <p>
+      Stryker mutated 5 files (695 mutants): the three policies,
+      <code>documentMover</code> and <code>documentRestorer</code>. Routes were
+      excluded for run time. Duration 53 min 38 s.
+    </p>
+    <table>
+      <tr>
+        <th>File</th>
+        <th>Score</th>
+        <th>Score (covered only)</th>
+        <th>Killed</th>
+        <th>Survived</th>
+        <th>No coverage</th>
+      </tr>
+      <tr><td>policies/share.ts</td><td>57.14</td><td>60.00</td><td>12</td><td>8</td><td>1</td></tr>
+      <tr><td>commands/documentRestorer.ts</td><td>37.50</td><td>46.15</td><td>17</td><td>21</td><td>9</td></tr>
+      <tr><td>commands/documentMover.ts</td><td>36.46</td><td>39.77</td><td>35</td><td>53</td><td>8</td></tr>
+      <tr><td>policies/collection.ts</td><td>36.44</td><td>38.22</td><td>86</td><td>139</td><td>11</td></tr>
+      <tr><td>policies/document.ts</td><td>23.47</td><td>24.64</td><td>69</td><td>211</td><td>14</td></tr>
+      <tr>
+        <td><strong>Total</strong></td>
+        <td><strong>31.65</strong></td>
+        <td><strong>33.74</strong></td>
+        <td><strong>219</strong></td>
+        <td><strong>432</strong></td>
+        <td><strong>43</strong></td>
+      </tr>
+    </table>
+    <div class="note">
+      The score understates reality: many survivors are likely equivalent or
+      low-value mutants (65 optional-chaining, 68 string-literal, mostly error
+      messages). I did not triage them one by one, so the true gap is unknown.
+      Real survivors do exist, e.g. the cross-team check on
+      <code>policies/collection.ts:35</code>. The full list is in
+      <code>reports/mutation/index.html</code> (git-ignored; re-run to
+      regenerate).
+    </div>
+
+    <h2>3. Deliberate breakage</h2>
+    <p>
+      Each safeguard was removed from production code, the whole integration
+      suite run, then the file reverted.
+    </p>
+    <table>
+      <tr>
+        <th>Break</th>
+        <th>Result</th>
+        <th>Test that caught it</th>
+      </tr>
+      <tr>
+        <td>Remove row lock in <code>RevisionsProcessor</code></td>
+        <td class="ok">Caught</td>
+        <td>revisions: "should not create duplicate revisions for concurrent identical updates"</td>
+      </tr>
+      <tr>
+        <td>Remove <code>authorize(delete)</code> in <code>documents.delete</code></td>
+        <td class="ok">Caught (2 failures)</td>
+        <td>
+          documents: "should forbid a read-only member from moving, updating or
+          deleting"; collections: "cross-team isolation … update, move or
+          delete"
+        </td>
+      </tr>
+      <tr>
+        <td>Remove <code>authorize(move)</code> in <code>documents.move</code></td>
+        <td class="ok">Caught after new test</td>
+        <td>documents: "should forbid moving a document out of a collection the user can only read" (was 45/45 passing before)</td>
+      </tr>
+      <tr>
+        <td>Remove <code>authorize(archive)</code> in <code>documents.archive</code></td>
+        <td class="ok">Caught after new test</td>
+        <td>documents: "should forbid a read-only member from archiving a document" (was 45/45 passing before)</td>
+      </tr>
+      <tr>
+        <td>Remove <code>authorize(createShare)</code> in <code>shares.create</code></td>
+        <td class="bad">Not caught (redundant)</td>
+        <td>
+          49/49 still pass. The existing guest test passes without it, so
+          another check already denies guests, and <code>isTeamMutable</code>
+          always returns true. Likely defence in depth, not a gap; no test
+          added. New test "another team's member share a document" passes but
+          is enforced by the document check.
+        </td>
+      </tr>
+      <tr>
+        <td>Drop cross-team check from collection <code>read</code> policy</td>
+        <td class="ok">Caught after new test</td>
+        <td>collections: "cross-team isolation … should not let another team read a collection, even an open one" (was 45/45 passing before)</td>
+      </tr>
+    </table>
+    <p class="meta">
+      Caveat: only the whole suite was run per break, so a "not caught" means no
+      test in any file failed. The two "caught" tests listed are the ones that
+      failed in the delete and lock runs.
+    </p>
+
+    <h2>Tests added in response</h2>
+    <ul>
+      <li><code>documents.move</code>: user who can write the destination but only read the source gets 403 and the document stays put.</li>
+      <li><code>documents.archive</code>: read-only member gets 403, <code>archivedAt</code> stays null.</li>
+      <li><code>collections.info</code>: another team's user cannot read an open (ReadWrite) collection.</li>
+      <li><code>shares.create</code>: another team's user cannot share a document; no share row is created.</li>
+    </ul>
+    <p>
+      All four pass against the unmodified code, so no permission bug was
+      found. The first three fail when their safeguard is removed (re-verified
+      with the same deliberate-breakage procedure).
+    </p>
+
+    <h2>Remaining gaps</h2>
+    <ul>
+      <li>
+        Triage the 432 surviving mutants (measured before the new tests; re-run
+        Stryker for an updated score), add tests for real ones, and exclude
+        equivalent mutants in <code>stryker.config.json</code> so the score can
+        be a gate.
+      </li>
+      <li>Mutation testing does not yet cover the route handlers.</li>
+    </ul>
+
+    <h2>Limits of this report</h2>
+    <ul>
+      <li>Mutation testing covered policies and two commands, not the route handlers.</li>
+      <li>
+        Stryker runs with <code>inPlace: true</code> because its sandbox mode
+        crashes on TypeScript 7 (<code>ts.parseConfigFileTextToJson is not a
+        function</code>). In-place mode edits source files during the run and
+        restores them afterwards; do not run it with uncommitted changes in the
+        mutated files, and do not run tests concurrently.
+      </li>
+      <li>One run each; no flakiness repeat runs.</li>
+    </ul>
+  </body>
+</html>
