@@ -623,4 +623,60 @@ describe("#documents.update and delete (integration)", () => {
     expect(row.collectionId).toEqual(collection.id);
     await expectStructureMatchesDb(collection.id);
   });
+
+  it("should forbid moving a document out of a collection the user can only read", async () => {
+    const team = await buildTeam();
+    const owner = await buildUser({ teamId: team.id });
+    const member = await buildUser({ teamId: team.id });
+    const source = await buildCollection({
+      teamId: team.id,
+      userId: owner.id,
+      permission: CollectionPermission.Read,
+    });
+    // The member may write to the destination, so only the "move" policy on
+    // the document itself stands between them and the move.
+    const destination = await buildCollection({
+      teamId: team.id,
+      userId: owner.id,
+      permission: CollectionPermission.ReadWrite,
+    });
+    const doc = await createPublished(owner, {
+      title: "Stay put",
+      collectionId: source.id,
+    });
+
+    const res = await server.post("/api/documents.move", member, {
+      body: { id: doc.id, collectionId: destination.id },
+    });
+    expect(res.status).toEqual(403);
+
+    const row = await Document.findByPk(doc.id, { rejectOnEmpty: true });
+    expect(row.collectionId).toEqual(source.id);
+    await expectStructureMatchesDb(source.id);
+    await expectStructureMatchesDb(destination.id);
+  });
+
+  it("should forbid a read-only member from archiving a document", async () => {
+    const team = await buildTeam();
+    const owner = await buildUser({ teamId: team.id });
+    const reader = await buildUser({ teamId: team.id });
+    const collection = await buildCollection({
+      teamId: team.id,
+      userId: owner.id,
+      permission: CollectionPermission.Read,
+    });
+    const doc = await createPublished(owner, {
+      title: "Keep active",
+      collectionId: collection.id,
+    });
+
+    const res = await server.post("/api/documents.archive", reader, {
+      body: { id: doc.id },
+    });
+    expect(res.status).toEqual(403);
+
+    const row = await Document.findByPk(doc.id, { rejectOnEmpty: true });
+    expect(row.archivedAt).toBeNull();
+    await expectStructureMatchesDb(collection.id);
+  });
 });

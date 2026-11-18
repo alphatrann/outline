@@ -566,6 +566,25 @@ describe("cross-team isolation (integration)", () => {
     );
   });
 
+  it("should not let another team read a collection, even an open one", async () => {
+    const teamA = await buildTeam();
+    const teamB = await buildTeam();
+    const userA = await buildUser({ teamId: teamA.id });
+    const userB = await buildUser({ teamId: teamB.id });
+    const open = await buildCollection({
+      teamId: teamA.id,
+      userId: userA.id,
+      name: "Team A open collection",
+      permission: CollectionPermission.ReadWrite,
+    });
+
+    const res = await server.post("/api/collections.info", userB, {
+      body: { id: open.id },
+    });
+    denied(res.status);
+    expect(JSON.stringify(await res.json())).not.toContain("open collection");
+  });
+
   it("should not let another team update, move or delete a document", async () => {
     const { userB, docA, collectionA } = await setup();
     const statuses = [

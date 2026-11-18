@@ -26,3 +26,8 @@ data/*
 
 coverage/
 logs/
+
+# Stryker
+.stryker-tmp/
+reports/
+stryker-setup-*.js
