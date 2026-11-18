@@ -9,7 +9,10 @@ export default defineConfig({
   test: {
     ...base.test,
     projects: base.test?.projects?.filter(
-      (p) => typeof p === "object" && p.test?.name === "server-integration"
+      (p) =>
+        typeof p === "object" &&
+        "test" in p &&
+        p.test?.name === "server-integration"
     ),
     coverage: {
       ...base.test?.coverage,
