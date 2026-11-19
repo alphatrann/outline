@@ -77,369 +77,149 @@
   <body>
     <h1>Issue #26 · Test Validity Report</h1>
     <p class="meta">
-      Branch <code>tests/issue-26</code> · 5 integration files, 49 tests · all
-      passing · generated 2026-11-19
+      Branch <code>tests/issue-26</code> · 5 integration files, 53 tests, all
+      passing · 2026-11-19 · per-test list:
+      <code>ISSUE26_INTEGRATION_TESTS.html</code>
     </p>
 
     <h2>Verdict</h2>
     <p>
-      The tests run and pass and catch real breakage, but mutation testing
-      (31.65% of mutants killed on the original 45 tests, 32.37% on the current
-      49) shows they are still thin. Of 6 deliberate authorization/isolation
-      breakages, 4 went unnoticed by the original 45 tests. Three of those are
-      now covered by 4 new tests (all pass against the real code, so the
-      permissions work); the fourth is a redundant check. Line coverage alone
-      would have hidden this (the policies show ~90%).
+      The tests pass and catch real breakage, but they are thin. Mutation score
+      is 38.99% on the policy and command files (31.65% with the original 45
+      tests). Of 6 safeguards removed by hand, the original suite missed 4. New
+      tests now catch 3 of them; the fourth is redundant. Line coverage of the
+      policies is about 90%, so coverage alone would not have shown this.
     </p>
 
-    <h2>Method: three independent checks</h2>
+    <h2>Method</h2>
     <table>
       <tr>
         <th>Check</th>
-        <th>Question it answers</th>
+        <th>Question</th>
         <th>Command</th>
       </tr>
       <tr>
-        <td>1. Scoped coverage + thresholds</td>
-        <td>
-          Do the tests execute the code they target, and does that stay true?
-        </td>
+        <td>1. Scoped coverage with thresholds</td>
+        <td>Do the tests execute the target code, and does that hold over time?</td>
         <td><code>yarn test:integration:coverage</code></td>
       </tr>
       <tr>
         <td>2. Mutation testing (Stryker)</td>
-        <td>Do the assertions detect changed behaviour?</td>
+        <td>Do the assertions fail when behaviour changes?</td>
         <td><code>yarn test:integration:mutation</code> (~54 min)</td>
       </tr>
       <tr>
-        <td>3. Manual deliberate breakage</td>
-        <td>Does a named test fail when a specific safeguard is removed?</td>
-        <td>edit production code, run integration suite, revert</td>
+        <td>3. Manual breakage</td>
+        <td>Does a test fail when one named safeguard is removed?</td>
+        <td>edit production code, run the suite, revert</td>
       </tr>
     </table>
     <p class="meta">
       Config: <code>vitest.integration.config.ts</code>,
-      <code>stryker.config.json</code>. The integration suite needs Docker
+      <code>stryker.config.json</code>. The suite needs Docker
       (testcontainers).
     </p>
 
-    <h2>What mutation testing actually does</h2>
+    <h2>How mutation testing works</h2>
     <p>
-      Your reading is right: Stryker deliberately injects faults into the
-      production code, then runs the tests. If a test fails, the fault was
-      <strong>killed</strong> (the tests noticed). If every test still passes,
-      the fault <strong>survived</strong> (the tests cannot tell the correct
-      code from the broken code). Nothing is "masked": a surviving mutant is a
-      concrete change that the suite is blind to.
+      Stryker creates many copies of the production code, each with one small
+      fault, and runs the tests against each. A mutant is
+      <strong>killed</strong> if a test fails and <strong>survived</strong> if
+      all pass; a survivor is a change the tests cannot see. Score =
+      (killed + timeout) / all mutants.
     </p>
-    <ol>
-      <li>
-        <strong>Generate mutants.</strong> For each mutated file Stryker finds
-        small, local code patterns and creates one broken variant of each, so
-        one mutant is one fault. Here: 695 mutants across 5 files.
-      </li>
-      <li>
-        <strong>Find which tests touch each mutant</strong> (<code
-          >perTest</code
-        >
-        coverage). A mutant that no test executes is reported
-        <em>NoCoverage</em> without running anything.
-      </li>
-      <li>
-        <strong>Activate one mutant at a time</strong> and run only the tests
-        that execute that line. Any failure or timeout means killed.
-      </li>
-      <li>
-        <strong>Score</strong> = (killed + timeout) / all mutants. Here (219 +
-        1) / 695 = 31.65%.
-      </li>
-    </ol>
-
-    <h3>Why the code looked like gibberish</h3>
     <p>
-      Recompiling the app 695 times would be far too slow. Instead, Stryker
-      rewrites each file <em>once</em>, embedding every fault as a switch:
-      <code
-        >stryMutAct_9fa48("175") ? &lt;faulty version&gt; :
-        &lt;original&gt;</code
-      >. Before each test run it sets the "active mutant" id, so only that one
-      switch flips. The <code>stryCov_…</code> calls record which tests reach
-      which mutant. The unreadable code is temporary instrumentation, not the
-      faults themselves, and Stryker restores the original files when the run
-      ends (in-place mode keeps a backup in <code>.stryker-tmp</code>). Real
-      example, <code>server/policies/collection.ts</code> line 35:
+      To avoid recompiling 695 times, Stryker rewrites each file once and wraps
+      every fault in a switch, then activates one id per run. The rewritten
+      code in the working tree is temporary and restored afterwards.
     </p>
     <pre>
-original:
-  if (!collection || user.teamId !== collection.teamId) { return false; }
+original:    if (!collection || user.teamId !== collection.teamId) { return false; }
+mutant 174:  if (false) { return false; }     // cross-team check removed</pre>
 
-what Stryker writes (shortened):
-  if (stryMutAct("175") ? !collection &amp;&amp; user.teamId !== collection.teamId
-    : stryMutAct("174") ? false
-    : stryMutAct("173") ? true
-    : (!collection || user.teamId !== collection.teamId)) { ... }</pre>
-    <p>
-      With no mutant active, the last branch runs, which is the original logic.
-      With mutant 174 active, the condition is replaced by
-      <code>false</code>, which removes the cross-team check entirely.
-    </p>
-
-    <h3>Real mutants from this run</h3>
-    <p class="meta">
-      Results marked "first run" are from the original 45 tests. The rerun on
-      the current 49 tests is in section 2.
-    </p>
+    <h3>Example mutants</h3>
     <table>
       <tr>
         <th>Where</th>
-        <th>Original</th>
-        <th>Injected fault</th>
+        <th>Original → fault</th>
         <th>Result</th>
-        <th>Meaning</th>
+        <th>Test or gap</th>
       </tr>
       <tr>
         <td><code>policies/collection.ts:35</code></td>
-        <td><code>!collection || user.teamId !== collection.teamId</code></td>
-        <td><code>true</code></td>
+        <td><code>!collection || …</code> → <code>true</code></td>
         <td class="ok">Killed</td>
-        <td>
-          Caught by "#collections.permissions should allow membership listing
-          for authorized users".
-        </td>
+        <td>membership listing for authorized users</td>
+      </tr>
+      <tr>
+        <td><code>policies/collection.ts:35</code></td>
+        <td><code>user.teamId !== collection.teamId</code> → <code>false</code></td>
+        <td class="ok">Killed</td>
+        <td>cross-team: another team cannot read an open collection</td>
       </tr>
       <tr>
         <td><code>commands/documentMover.ts:36</code></td>
-        <td><code>collectionId !== document.collectionId</code></td>
-        <td><code>true</code></td>
+        <td><code>collectionId !== document.collectionId</code> → <code>true</code></td>
         <td class="ok">Killed</td>
-        <td>
-          Caught by "#documents.move should nest a document under a parent and
-          keep structure in sync".
-        </td>
+        <td>move: nest a document under a parent</td>
       </tr>
       <tr>
         <td><code>commands/documentMover.ts:36</code></td>
-        <td><code>collectionId !== document.collectionId</code></td>
-        <td><code>false</code></td>
+        <td>same condition → <code>false</code></td>
         <td class="ok">Killed</td>
-        <td>
-          Caught by "#documents.move should move a parent and its children to
-          another collection".
-        </td>
-      </tr>
-      <tr>
-        <td><code>policies/collection.ts:35</code></td>
-        <td><code>user.teamId !== collection.teamId</code></td>
-        <td><code>false</code></td>
-        <td>
-          <span class="bad">Survived</span> in the first run,
-          <span class="ok">killed</span> in the rerun
-        </td>
-        <td>
-          A user from another team would be allowed to read the collection and
-          no test failed. This real gap led to the new cross-team collection
-          test, which now kills it.
-        </td>
-      </tr>
-      <tr>
-        <td><code>policies/collection.ts:35</code></td>
-        <td><code>||</code></td>
-        <td><code>&amp;&amp;</code></td>
-        <td>
-          <span class="bad">Survived</span> in the first run,
-          <span class="ok">killed</span> in the rerun
-        </td>
-        <td>
-          Same gap, different fault. All 7 mutants on this line are now killed.
-        </td>
+        <td>move: parent and children to another collection</td>
       </tr>
       <tr>
         <td><code>policies/document.ts:30</code></td>
-        <td><code>actor.id === document?.createdById</code></td>
-        <td><code>true</code> / <code>false</code></td>
-        <td class="bad">Survived (both runs)</td>
-        <td>
-          The creator check is never decisive in any test; plausibly a real gap,
-          not triaged.
-        </td>
+        <td><code>actor.id === document?.createdById</code> → <code>true</code> / <code>false</code></td>
+        <td class="bad">Survived</td>
+        <td>creator check is never decisive; likely a real gap</td>
       </tr>
       <tr>
         <td><code>policies/collection.ts:52</code></td>
-        <td><code>"read"</code></td>
-        <td><code>""</code></td>
+        <td><code>"read"</code> → <code>""</code></td>
         <td class="bad">Survived</td>
-        <td>Changes an action name string; may be low value.</td>
+        <td>action-name string; low value</td>
       </tr>
       <tr>
         <td><code>policies/collection.ts:13</code></td>
-        <td><code>team?.memberCollectionCreate</code></td>
-        <td><code>team.memberCollectionCreate</code></td>
+        <td><code>team?.memberCollectionCreate</code> → <code>team.memberCollectionCreate</code></td>
         <td class="bad">Survived</td>
-        <td>
-          Only differs when <code>team</code> is undefined, which the code may
-          never allow; likely an equivalent mutant (noise).
-        </td>
+        <td>differs only when <code>team</code> is undefined; likely equivalent</td>
       </tr>
     </table>
-
-    <h3>Kinds of fault Stryker injected (first run)</h3>
-    <table>
-      <tr>
-        <th>Mutator</th>
-        <th>What it does</th>
-        <th>Killed</th>
-        <th>Survived</th>
-      </tr>
-      <tr>
-        <td>ConditionalExpression</td>
-        <td>
-          replaces a condition with <code>true</code> / <code>false</code>
-        </td>
-        <td>40</td>
-        <td>96</td>
-      </tr>
-      <tr>
-        <td>BooleanLiteral</td>
-        <td>
-          flips <code>true</code>/<code>false</code>, removes <code>!</code>
-        </td>
-        <td>56</td>
-        <td>83</td>
-      </tr>
-      <tr>
-        <td>StringLiteral</td>
-        <td>replaces strings with <code>""</code></td>
-        <td>43</td>
-        <td>68</td>
-      </tr>
-      <tr>
-        <td>OptionalChaining</td>
-        <td><code>a?.b</code> becomes <code>a.b</code></td>
-        <td>1</td>
-        <td>65</td>
-      </tr>
-      <tr>
-        <td>LogicalOperator</td>
-        <td><code>||</code> / <code>&amp;&amp;</code> swap</td>
-        <td>7</td>
-        <td>30</td>
-      </tr>
-      <tr>
-        <td>BlockStatement</td>
-        <td>empties a block <code>{}</code></td>
-        <td>24</td>
-        <td>11</td>
-      </tr>
-      <tr>
-        <td>ArrowFunction</td>
-        <td>replaces a function body with <code>undefined</code></td>
-        <td>16</td>
-        <td>23</td>
-      </tr>
-      <tr>
-        <td>EqualityOperator</td>
-        <td>
-          <code>===</code> / <code>!==</code> / <code>&lt;</code> boundary
-          changes
-        </td>
-        <td>15</td>
-        <td>17</td>
-      </tr>
-      <tr>
-        <td>ArrayDeclaration / ObjectLiteral / CallExpression / Arithmetic</td>
-        <td>empties arrays and objects, drops calls, changes operators</td>
-        <td>17</td>
-        <td>39</td>
-      </tr>
-    </table>
-    <p>
-      Roughly 133 of the 432 survivors are optional-chaining and string mutants,
-      which are the most likely to be noise. The 126 survivors from conditionals
-      and logical operators are the ones that matter most: they are changes to
-      real decisions that no test noticed.
-    </p>
 
     <h2>1. Scoped coverage</h2>
     <p>
-      Whole-app coverage is 8.38% lines (5109 / 60914) and says nothing about
-      these tests. Scoped to the files they target:
+      Whole-app coverage is 8.38% of lines and says nothing about these tests,
+      so coverage is scoped to the files they target.
     </p>
     <table>
-      <tr>
-        <th>File</th>
-        <th>Lines</th>
-        <th>Branches</th>
-      </tr>
-      <tr>
-        <td>policies/collection.ts</td>
-        <td>90.14%</td>
-        <td>88.88%</td>
-      </tr>
-      <tr>
-        <td>policies/document.ts</td>
-        <td>90.76%</td>
-        <td>77.41%</td>
-      </tr>
-      <tr>
-        <td>policies/share.ts</td>
-        <td>90.00%</td>
-        <td>100%</td>
-      </tr>
-      <tr>
-        <td>commands/documentMover.ts</td>
-        <td>84.31%</td>
-        <td>77.41%</td>
-      </tr>
-      <tr>
-        <td>commands/documentRestorer.ts</td>
-        <td>85.18%</td>
-        <td>72.22%</td>
-      </tr>
-      <tr>
-        <td>commands/documentCreator.ts</td>
-        <td>76.08%</td>
-        <td>66.03%</td>
-      </tr>
-      <tr>
-        <td>commands/documentUpdater.ts</td>
-        <td>68.00%</td>
-        <td>61.53%</td>
-      </tr>
-      <tr>
-        <td>routes/api/collections/collections.ts</td>
-        <td>44.70%</td>
-        <td>43.26%</td>
-      </tr>
-      <tr>
-        <td>routes/api/documents/documents.ts</td>
-        <td>32.31%</td>
-        <td>29.76%</td>
-      </tr>
-      <tr>
-        <td>routes/api/shares/shares.ts</td>
-        <td>28.28%</td>
-        <td>20.71%</td>
-      </tr>
-      <tr>
-        <td><strong>All scoped files</strong></td>
-        <td><strong>46.42% (616/1327)</strong></td>
-        <td><strong>43.86% (347/791)</strong></td>
-      </tr>
+      <tr><th>File</th><th>Lines</th><th>Branches</th></tr>
+      <tr><td>policies/collection.ts</td><td>90.14%</td><td>88.88%</td></tr>
+      <tr><td>policies/document.ts</td><td>90.76%</td><td>77.41%</td></tr>
+      <tr><td>policies/share.ts</td><td>90.00%</td><td>100%</td></tr>
+      <tr><td>commands/documentMover.ts</td><td>84.31%</td><td>77.41%</td></tr>
+      <tr><td>commands/documentRestorer.ts</td><td>85.18%</td><td>72.22%</td></tr>
+      <tr><td>commands/documentCreator.ts</td><td>76.08%</td><td>66.03%</td></tr>
+      <tr><td>commands/documentUpdater.ts</td><td>68.00%</td><td>61.53%</td></tr>
+      <tr><td>routes/api/collections/collections.ts</td><td>44.70%</td><td>43.26%</td></tr>
+      <tr><td>routes/api/documents/documents.ts</td><td>32.31%</td><td>29.76%</td></tr>
+      <tr><td>routes/api/shares/shares.ts</td><td>28.28%</td><td>20.71%</td></tr>
+      <tr><td><strong>All scoped files</strong></td><td><strong>46.42% (616/1327)</strong></td><td><strong>43.86% (347/791)</strong></td></tr>
     </table>
     <p>
-      Route files are large and the tests only touch some endpoints, so low
-      route percentages are expected. Thresholds are floors set just below these
-      values (global 45 / 42; policies 88 / 75; commands 65 / 58; routes 28 /
-      20) and fail the run if coverage regresses. Coverage only proves code
-      <em>ran</em>, not that anything was asserted.
+      Route percentages are low because the tests touch only some endpoints.
+      Thresholds sit just below these values (global 45 / 42, policies 88 / 75,
+      commands 65 / 58, routes 28 / 20) and fail the run on regression.
+      Coverage shows code ran, not that anything was asserted.
     </p>
 
     <h2>2. Mutation testing</h2>
     <p>
-      Stryker mutated 5 files (695 mutants): the three policies,
-      <code>documentMover</code> and <code>documentRestorer</code>. Routes were
-      excluded for run time. Two runs, about 54 minutes each: the first on the
-      original 45 tests, the second on the current 49 tests (table below).
+      695 mutants in five files: three policies, <code>documentMover</code> and
+      <code>documentRestorer</code>. Route handlers are covered separately in
+      section 2b.
     </p>
     <table>
       <tr>
@@ -449,210 +229,173 @@ what Stryker writes (shortened):
         <th>Killed</th>
         <th>Survived</th>
         <th>No coverage</th>
+        <th>Baseline score (45 tests)</th>
       </tr>
-      <tr>
-        <td>policies/share.ts</td>
-        <td>57.14</td>
-        <td>60.00</td>
-        <td>12</td>
-        <td>8</td>
-        <td>1</td>
-      </tr>
-      <tr>
-        <td>commands/documentRestorer.ts</td>
-        <td>37.50</td>
-        <td>46.15</td>
-        <td>18</td>
-        <td>21</td>
-        <td>9</td>
-      </tr>
-      <tr>
-        <td>commands/documentMover.ts</td>
-        <td>36.46</td>
-        <td>39.77</td>
-        <td>35</td>
-        <td>53</td>
-        <td>8</td>
-      </tr>
-      <tr>
-        <td>policies/collection.ts</td>
-        <td>38.56 (was 36.44)</td>
-        <td>40.09 (was 38.22)</td>
-        <td>91 (was 86)</td>
-        <td>136 (was 139)</td>
-        <td>9 (was 11)</td>
-      </tr>
-      <tr>
-        <td>policies/document.ts</td>
-        <td>23.47</td>
-        <td>24.64</td>
-        <td>69</td>
-        <td>211</td>
-        <td>14</td>
-      </tr>
-      <tr>
-        <td><strong>Total</strong></td>
-        <td><strong>32.37</strong> (was 31.65)</td>
-        <td><strong>34.40</strong> (was 33.74)</td>
-        <td><strong>225</strong> (was 219 + 1 timeout)</td>
-        <td><strong>429</strong> (was 432)</td>
-        <td><strong>41</strong> (was 43)</td>
-      </tr>
+      <tr><td>policies/share.ts</td><td>57.14</td><td>60.00</td><td>12</td><td>8</td><td>1</td><td>57.14</td></tr>
+      <tr><td>commands/documentRestorer.ts</td><td>37.50</td><td>46.15</td><td>18</td><td>21</td><td>9</td><td>37.50</td></tr>
+      <tr><td>commands/documentMover.ts</td><td>36.46</td><td>39.77</td><td>35</td><td>53</td><td>8</td><td>36.46</td></tr>
+      <tr><td>policies/collection.ts</td><td>38.56</td><td>40.09</td><td>91</td><td>136</td><td>9</td><td>36.44</td></tr>
+      <tr><td>policies/document.ts</td><td>39.12</td><td>40.07</td><td>115</td><td>172</td><td>7</td><td>23.47</td></tr>
+      <tr><td><strong>Total</strong></td><td><strong>38.99</strong></td><td><strong>41.00</strong></td><td><strong>271</strong></td><td><strong>390</strong></td><td><strong>34</strong></td><td><strong>31.65</strong></td></tr>
+    </table>
+    <p class="meta">
+      Rows combine two runs: <code>policies/document.ts</code> from a run on
+      all 53 tests, the other files from a run on 49 tests (the last four tests
+      only target <code>document.ts</code>).
+    </p>
+    <ul>
+      <li>
+        The cross-team collection test killed 5 mutants in
+        <code>policies/collection.ts</code>.
+      </li>
+      <li>
+        The four document-policy tests (draft privacy, membership grants,
+        export, commenting) killed 46 mutants in
+        <code>policies/document.ts</code> and covered 7 that had no coverage.
+      </li>
+      <li>
+        The move, archive and share tests killed none: the
+        <code>authorize(...)</code> calls they protect are in route handlers,
+        which the policy/command run does not mutate. Section 2b and section 3 cover them.
+      </li>
+    </ul>
+
+    <h3>Survivors (first run)</h3>
+    <table>
+      <tr><th>Mutator</th><th>Fault injected</th><th>Killed</th><th>Survived</th></tr>
+      <tr><td>ConditionalExpression</td><td>condition → <code>true</code> / <code>false</code></td><td>40</td><td>96</td></tr>
+      <tr><td>BooleanLiteral</td><td>flip literal, remove <code>!</code></td><td>56</td><td>83</td></tr>
+      <tr><td>StringLiteral</td><td>string → <code>""</code></td><td>43</td><td>68</td></tr>
+      <tr><td>OptionalChaining</td><td><code>a?.b</code> → <code>a.b</code></td><td>1</td><td>65</td></tr>
+      <tr><td>LogicalOperator</td><td><code>||</code> ↔ <code>&amp;&amp;</code></td><td>7</td><td>30</td></tr>
+      <tr><td>BlockStatement</td><td>empty a block</td><td>24</td><td>11</td></tr>
+      <tr><td>ArrowFunction</td><td>body → <code>undefined</code></td><td>16</td><td>23</td></tr>
+      <tr><td>EqualityOperator</td><td><code>===</code>, <code>!==</code>, boundary changes</td><td>15</td><td>17</td></tr>
+      <tr><td>Other (array, object, call, arithmetic)</td><td>empty or drop</td><td>17</td><td>39</td></tr>
     </table>
     <p>
-      Only <code>policies/collection.ts</code> changed: the cross-team
-      collection test killed 5 more mutants and covered 2 that had no coverage.
-      The move, archive and share tests killed none, because the safeguards they
-      protect (<code>authorize(...)</code> calls) live in the route handlers,
-      which are outside the mutated files. The manual breakage in section 3
-      catches those; mutation testing does not see them yet. Adding the route
-      files to <code>mutate</code> in <code>stryker.config.json</code> would
-      measure it, at a much longer run time.
+      Optional-chaining and string survivors (133) are mostly noise. The 126
+      survivors from conditionals and logical operators are changes to real
+      decisions and matter most. None are triaged individually; the full list
+      is in <code>reports/mutation/index.html</code> (git-ignored, regenerate
+      with the mutation command). Known real survivors: the group-membership
+      loop in <code>policies/document.ts</code> (lines 313-315) and the
+      <code>unpublish</code> rule (lines 266-284).
     </p>
-    <div class="note">
-      The score understates reality: many survivors are likely equivalent or
-      low-value mutants (65 optional-chaining, 68 string-literal, mostly error
-      messages). I did not triage them one by one, so the true gap is unknown.
-      Real survivors do exist, e.g. the creator check on
-      <code>policies/document.ts:30</code>. The full list is in
-      <code>reports/mutation/index.html</code> (git-ignored; re-run to
-      regenerate).
-    </div>
 
-    <h2>3. Deliberate breakage</h2>
+    <h2>2b. Mutation testing of route handlers</h2>
     <p>
-      Each safeguard was removed from production code, the whole integration
-      suite run, then the file reverted.
+      526 mutants in the handlers these tests exercise: <code>collections.info</code>,
+      <code>add_group</code>, <code>remove_group</code>, <code>add_user</code>,
+      <code>remove_user</code>, <code>memberships</code>, <code>update</code>;
+      <code>documents.restore</code>, <code>move</code>, <code>archive</code>,
+      <code>delete</code>, <code>create</code>, <code>add_user</code>;
+      <code>shares.info</code>, <code>create</code>, <code>update</code>,
+      <code>revoke</code>. Other handlers are not mutated.
     </p>
     <table>
+      <tr><th>File (handlers above)</th><th>Mutants</th><th>Killed</th><th>Survived</th><th>No coverage</th><th>Score</th></tr>
+      <tr><td>routes/api/collections/collections.ts</td><td>200</td><td>63</td><td>60</td><td>77</td><td>31.50</td></tr>
+      <tr><td>routes/api/documents/documents.ts</td><td>164</td><td>83</td><td>48</td><td>33</td><td>50.61</td></tr>
+      <tr><td>routes/api/shares/shares.ts</td><td>162</td><td>44</td><td>51</td><td>67</td><td>27.16</td></tr>
+      <tr><td><strong>Total</strong></td><td><strong>526</strong></td><td><strong>190</strong></td><td><strong>159</strong></td><td><strong>177</strong></td><td><strong>36.12</strong> (54.44 of covered)</td></tr>
+    </table>
+    <ul>
+      <li>
+        <strong>Best killers:</strong> the share create/revoke test (29 mutants),
+        the document-access policy test (28), the lifecycle test (19), the
+        collection permission-boundary test (15) and the move/nest test (12).
+      </li>
+      <li>
+        <strong>No tests reach 177 mutants.</strong> They include the
+        <code>authorize(...)</code> calls in <code>collections.update</code>
+        group routes, <code>documents.unpublish</code>, the
+        <code>shares.create</code> collection check and the
+        <code>shares.info</code> team lookup. These need new tests.
+      </li>
+      <li>
+        <strong>Per-test results</strong> are in
+        <code>ISSUE26_INTEGRATION_TESTS.html</code>. Stryker credits a
+        kill only to the first failing test, so some tests show no kills even
+        though they cover killed mutants (concurrent moves, move to another
+        collection, read-only restore). Others, such as the share edge cases,
+        revisions and search, call no mutated code at all because the
+        routes they hit (<code>documents.info</code>, search, revisions) were
+        not mutated.
+      </li>
+    </ul>
+
+    <h2>3. Manual breakage</h2>
+    <p>
+      Each safeguard was removed from production code, the full integration
+      suite run, and the change reverted.
+    </p>
+    <table>
+      <tr><th>Safeguard removed</th><th>Result</th><th>Test that fails</th></tr>
       <tr>
-        <th>Break</th>
-        <th>Result</th>
-        <th>Test that caught it</th>
-      </tr>
-      <tr>
-        <td>Remove row lock in <code>RevisionsProcessor</code></td>
+        <td>Row lock in <code>RevisionsProcessor</code></td>
         <td class="ok">Caught</td>
+        <td>revisions: concurrent identical updates create one revision</td>
+      </tr>
+      <tr>
+        <td><code>authorize(delete)</code> in <code>documents.delete</code></td>
+        <td class="ok">Caught</td>
+        <td>documents: read-only member cannot move, update or delete; collections: cross-team update, move or delete</td>
+      </tr>
+      <tr>
+        <td><code>authorize(move)</code> in <code>documents.move</code></td>
+        <td class="ok">Caught</td>
+        <td>documents: cannot move out of a collection the user can only read</td>
+      </tr>
+      <tr>
+        <td><code>authorize(archive)</code> in <code>documents.archive</code></td>
+        <td class="ok">Caught</td>
+        <td>documents: read-only member cannot archive</td>
+      </tr>
+      <tr>
+        <td><code>authorize(createShare)</code> in <code>shares.create</code></td>
+        <td class="bad">Not caught</td>
         <td>
-          revisions: "should not create duplicate revisions for concurrent
-          identical updates"
+          Redundant: guests and other teams are also denied by the document
+          check, and <code>isTeamMutable</code> always returns true. Likely
+          defence in depth, so no test was added.
         </td>
       </tr>
       <tr>
-        <td>
-          Remove <code>authorize(delete)</code> in <code>documents.delete</code>
-        </td>
-        <td class="ok">Caught (2 failures)</td>
-        <td>
-          documents: "should forbid a read-only member from moving, updating or
-          deleting"; collections: "cross-team isolation … update, move or
-          delete"
-        </td>
-      </tr>
-      <tr>
-        <td>
-          Remove <code>authorize(move)</code> in <code>documents.move</code>
-        </td>
-        <td class="ok">Caught after new test</td>
-        <td>
-          documents: "should forbid moving a document out of a collection the
-          user can only read" (was 45/45 passing before)
-        </td>
-      </tr>
-      <tr>
-        <td>
-          Remove <code>authorize(archive)</code> in
-          <code>documents.archive</code>
-        </td>
-        <td class="ok">Caught after new test</td>
-        <td>
-          documents: "should forbid a read-only member from archiving a
-          document" (was 45/45 passing before)
-        </td>
-      </tr>
-      <tr>
-        <td>
-          Remove <code>authorize(createShare)</code> in
-          <code>shares.create</code>
-        </td>
-        <td class="bad">Not caught (redundant)</td>
-        <td>
-          49/49 still pass. The existing guest test passes without it, so
-          another check already denies guests, and <code>isTeamMutable</code>
-          always returns true. Likely defence in depth, not a gap; no test
-          added. New test "another team's member share a document" passes but is
-          enforced by the document check.
-        </td>
-      </tr>
-      <tr>
-        <td>Drop cross-team check from collection <code>read</code> policy</td>
-        <td class="ok">Caught after new test</td>
-        <td>
-          collections: "cross-team isolation … should not let another team read
-          a collection, even an open one" (was 45/45 passing before)
-        </td>
+        <td>Cross-team check in collection <code>read</code> policy</td>
+        <td class="ok">Caught</td>
+        <td>collections: another team cannot read an open collection</td>
       </tr>
     </table>
     <p class="meta">
-      Caveat: only the whole suite was run per break, so a "not caught" means no
-      test in any file failed. The two "caught" tests listed are the ones that
-      failed in the delete and lock runs.
+      “Not caught” means no test in any file failed. The move, archive and
+      cross-team collection tests were added because the original suite missed
+      these breaks.
     </p>
 
-    <h2>Tests added in response</h2>
+    <h2>Tests added from these findings</h2>
     <ul>
-      <li>
-        <code>documents.move</code>: user who can write the destination but only
-        read the source gets 403 and the document stays put.
-      </li>
-      <li>
-        <code>documents.archive</code>: read-only member gets 403,
-        <code>archivedAt</code> stays null.
-      </li>
-      <li>
-        <code>collections.info</code>: another team's user cannot read an open
-        (ReadWrite) collection.
-      </li>
-      <li>
-        <code>shares.create</code>: another team's user cannot share a document;
-        no share row is created.
-      </li>
+      <li><code>documents.move</code>: user who can write the destination but only read the source gets 403; the document stays.</li>
+      <li><code>documents.archive</code>: read-only member gets 403; <code>archivedAt</code> stays null.</li>
+      <li><code>collections.info</code>: another team's user cannot read an open collection.</li>
+      <li><code>shares.create</code>: another team's user cannot share a document; no share row is created.</li>
+      <li>Document policy: a collection-less draft is private to its creator.</li>
+      <li>Document policy: Read membership reads but cannot edit; ReadWrite edits but cannot invite.</li>
+      <li>Document policy: viewers export only when the team allows it.</li>
+      <li>Document policy: commenting is rejected team-wide (400) and per collection (403).</li>
     </ul>
-    <p>
-      All four pass against the unmodified code, so no permission bug was found.
-      The first three fail when their safeguard is removed (re-verified with the
-      same deliberate-breakage procedure).
-    </p>
+    <p>All pass against unmodified code, so no permission bug was found.</p>
 
     <h2>Remaining gaps</h2>
     <ul>
-      <li>
-        Triage the 429 surviving mutants (211 are in
-        <code>policies/document.ts</code>), add tests for real ones, and exclude
-        equivalent mutants in <code>stryker.config.json</code> so the score can
-        be a gate.
-      </li>
-      <li>Mutation testing does not yet cover the route handlers.</li>
+      <li>Triage the 390 survivors (172 in <code>policies/document.ts</code>), add tests for real ones, and exclude equivalent mutants in <code>stryker.config.json</code> so the score can gate CI.</li>
+      <li>Write tests for the 177 route mutants with no coverage, starting with <code>shares.ts</code> and the group routes in <code>collections.ts</code>.</li>
     </ul>
 
-    <h2>Limits of this report</h2>
+    <h2>Limits</h2>
     <ul>
-      <li>
-        Mutation testing covered policies and two commands, not the route
-        handlers.
-      </li>
-      <li>
-        Stryker runs with <code>inPlace: true</code> because its sandbox mode
-        crashes on TypeScript 7 (<code
-          >ts.parseConfigFileTextToJson is not a function</code
-        >). In-place mode edits source files during the run and restores them
-        afterwards; do not run it with uncommitted changes in the mutated files,
-        and do not run tests concurrently.
-      </li>
-      <li>
-        Two Stryker runs (before and after the new tests); no flakiness repeat
-        runs.
-      </li>
+      <li>Stryker runs with <code>inPlace: true</code> because its sandbox crashes on TypeScript 7 (<code>ts.parseConfigFileTextToJson is not a function</code>). It edits source files during the run and restores them afterwards. Do not run it with uncommitted changes in the mutated files or alongside other test runs.</li>
+      <li>Each Stryker configuration ran once; no flakiness repeats. The route run mutated only the line ranges of the handlers listed in 2b.</li>
     </ul>
   </body>
 </html>
