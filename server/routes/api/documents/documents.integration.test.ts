@@ -1,5 +1,7 @@
 import {
   buildAdmin,
+  buildDraftDocument,
+  buildViewer,
   buildCollection,
   buildDocument,
   buildShare,
@@ -8,7 +10,12 @@ import {
 } from "@server/test/factories";
 import { cleanBetweenTests } from "@server/test/cleanup";
 import { getTestServer } from "@server/test/support";
-import { CollectionPermission } from "@shared/types";
+import {
+  CollectionPermission,
+  CommentingAccess,
+  DocumentPermission,
+  TeamPreference,
+} from "@shared/types";
 import type { NavigationNode } from "@shared/types";
 import { Collection, Document } from "@server/models";
 
@@ -678,5 +685,161 @@ describe("#documents.update and delete (integration)", () => {
     const row = await Document.findByPk(doc.id, { rejectOnEmpty: true });
     expect(row.archivedAt).toBeNull();
     await expectStructureMatchesDb(collection.id);
+  });
+});
+
+/**
+ * Pins individual decisions of the document policy through the API, so a
+ * changed condition in server/policies/document.ts fails a test.
+ */
+describe("document policy decisions (integration)", () => {
+  const denied = (status: number) => expect([403, 404]).toContain(status);
+
+  it("should keep a collection-less draft private to its creator", async () => {
+    const team = await buildTeam();
+    const creator = await buildUser({ teamId: team.id });
+    const other = await buildUser({ teamId: team.id });
+    const draft = await buildDraftDocument({
+      teamId: team.id,
+      userId: creator.id,
+      collectionId: null,
+      title: "My private draft",
+    });
+
+    const otherInfo = await server.post("/api/documents.info", other, {
+      body: { id: draft.id },
+    });
+    const otherUpdate = await server.post("/api/documents.update", other, {
+      body: { id: draft.id, title: "Hijacked" },
+    });
+    denied(otherInfo.status);
+    denied(otherUpdate.status);
+
+    const ownInfo = await server.post("/api/documents.info", creator, {
+      body: { id: draft.id },
+    });
+    const ownUpdate = await server.post("/api/documents.update", creator, {
+      body: { id: draft.id, title: "Still mine" },
+    });
+    expect(ownInfo.status).toEqual(200);
+    expect(ownUpdate.status).toEqual(200);
+
+    const row = await Document.findByPk(draft.id, { rejectOnEmpty: true });
+    expect(row.title).toEqual("Still mine");
+  });
+
+  it("should grant document access only as far as the membership permission", async () => {
+    const team = await buildTeam();
+    const owner = await buildUser({ teamId: team.id });
+    const member = await buildUser({ teamId: team.id });
+    const collection = await buildCollection({
+      teamId: team.id,
+      userId: owner.id,
+      permission: null,
+    });
+    const doc = await createPublished(owner, {
+      title: "Invite only",
+      collectionId: collection.id,
+    });
+    const read = () =>
+      server.post("/api/documents.info", member, { body: { id: doc.id } });
+    const edit = (title: string) =>
+      server.post("/api/documents.update", member, {
+        body: { id: doc.id, title },
+      });
+
+    // No membership: invisible.
+    denied((await read()).status);
+
+    // Read membership: visible, not editable.
+    const addRead = await server.post("/api/documents.add_user", owner, {
+      body: {
+        id: doc.id,
+        userId: member.id,
+        permission: DocumentPermission.Read,
+      },
+    });
+    expect(addRead.status).toEqual(200);
+    expect((await read()).status).toEqual(200);
+    expect((await edit("Read cannot edit")).status).toEqual(403);
+
+    // ReadWrite membership: editable.
+    const addWrite = await server.post("/api/documents.add_user", owner, {
+      body: {
+        id: doc.id,
+        userId: member.id,
+        permission: DocumentPermission.ReadWrite,
+      },
+    });
+    expect(addWrite.status).toEqual(200);
+    expect((await edit("ReadWrite can edit")).status).toEqual(200);
+
+    // A member with ReadWrite still cannot manage who else has access.
+    const other = await buildUser({ teamId: team.id });
+    const invite = await server.post("/api/documents.add_user", member, {
+      body: { id: doc.id, userId: other.id },
+    });
+    expect(invite.status).toEqual(403);
+  });
+
+  it("should only let viewers export when the team allows it", async () => {
+    const team = await buildTeam();
+    const owner = await buildUser({ teamId: team.id });
+    const viewer = await buildViewer({ teamId: team.id });
+    const collection = await buildCollection({
+      teamId: team.id,
+      userId: owner.id,
+      permission: CollectionPermission.Read,
+    });
+    const doc = await createPublished(owner, {
+      title: "Exportable",
+      collectionId: collection.id,
+    });
+    const exportAs = (user: Parameters<typeof server.post>[1]) =>
+      server.post("/api/documents.export", user, {
+        headers: { accept: "text/markdown" },
+        body: { id: doc.id },
+      });
+
+    team.setPreference(TeamPreference.ViewersCanExport, false);
+    await team.save();
+    expect((await exportAs(viewer)).status).toEqual(403);
+    expect((await exportAs(owner)).status).toEqual(200);
+
+    team.setPreference(TeamPreference.ViewersCanExport, true);
+    await team.save();
+    expect((await exportAs(viewer)).status).toEqual(200);
+  });
+
+  it("should respect the team and collection commenting settings", async () => {
+    const team = await buildTeam();
+    const user = await buildUser({ teamId: team.id });
+    const collection = await buildCollection({
+      teamId: team.id,
+      userId: user.id,
+    });
+    const doc = await createPublished(user, {
+      title: "Discuss",
+      collectionId: collection.id,
+    });
+    const comment = () =>
+      server.post("/api/comments.create", user, {
+        body: { documentId: doc.id, text: "hello" },
+      });
+
+    team.setPreference(TeamPreference.Commenting, CommentingAccess.Members);
+    await team.save();
+    expect((await comment()).status).toEqual(200);
+
+    // Disabled team-wide: rejected by the commentingEnabled feature middleware.
+    team.setPreference(TeamPreference.Commenting, CommentingAccess.None);
+    await team.save();
+    expect((await comment()).status).toEqual(400);
+
+    team.setPreference(TeamPreference.Commenting, CommentingAccess.Members);
+    await team.save();
+    // Disabled for one collection: rejected by the "comment" policy.
+    await collection.update({ commenting: false });
+    expect((await comment()).status).toEqual(403);
   });
 });

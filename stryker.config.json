@@ -8,6 +8,7 @@
   ],
   "coverageAnalysis": "perTest",
   "inPlace": true,
+  "disableTypeChecks": false,
   "concurrency": 2,
   "timeoutMS": 60000,
   "reporters": ["clear-text", "json", "html"],
