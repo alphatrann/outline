@@ -1,0 +1,669 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Issue #24 &mdash; Clean-Machine Integration Run (Deliverable H)</title>
+    <style>
+      body {
+        font:
+          16px/1.55 system-ui,
+          -apple-system,
+          "Segoe UI",
+          sans-serif;
+        color: #1f2328;
+        max-width: 960px;
+        margin: 2rem auto;
+        padding: 0 1rem;
+      }
+      h1 {
+        font-size: 1.8rem;
+        margin: 0 0 0.25rem;
+      }
+      h2 {
+        font-size: 1.25rem;
+        margin: 2rem 0 0.4rem;
+        border-bottom: 1px solid #d0d7de;
+        padding-bottom: 0.3rem;
+      }
+      h3 {
+        font-size: 1.02rem;
+        margin: 1.2rem 0 0.3rem;
+      }
+      code,
+      pre {
+        background: #f6f8fa;
+        border-radius: 6px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      code {
+        padding: 0.12em 0.35em;
+        font-size: 0.9em;
+      }
+      pre {
+        padding: 0.9rem 1rem;
+        overflow-x: auto;
+        font-size: 0.86rem;
+        line-height: 1.45;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        font-size: 0.9rem;
+        margin: 0.5rem 0 1rem;
+      }
+      th,
+      td {
+        border: 1px solid #d0d7de;
+        padding: 0.4rem 0.65rem;
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        background: #f6f8fa;
+      }
+      .meta {
+        color: #57606a;
+      }
+      .note {
+        background: #fff8c5;
+        border-left: 4px solid #d97706;
+        padding: 0.7rem 1rem;
+      }
+      .bad {
+        color: #b42318;
+        font-weight: 600;
+      }
+      .good {
+        color: #067647;
+        font-weight: 600;
+      }
+      .warn {
+        color: #b54708;
+        font-weight: 600;
+      }
+      ul,
+      ol {
+        padding-left: 1.3rem;
+      }
+      li {
+        margin: 0.25rem 0;
+      }
+      .small {
+        font-size: 0.84rem;
+        color: #57606a;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Issue #24 &mdash; Clean-Machine Integration Run (Deliverable H)</h1>
+    <p class="meta">
+      Repository <code>alphatrann/outline</code> &middot; base commit
+      <code>6e780a9</code> &middot; run date 2026-11-19 &middot; Owner N
+      (NHNam1209) with gsb-b60 &middot; Scope: K16 integration suite only.
+    </p>
+
+    <h2>1. Summary</h2>
+    <p>
+      <span class="bad">The K16 integration suite is not green on Windows.</span>
+      The harness itself works: on a fresh clone it starts disposable Postgres 17
+      and Redis 8 containers, applies every migration, runs the suite and removes
+      the containers. But <b>4 of 53 tests fail</b>, and all four are the
+      <b>revisions flow (K16 Flow 3)</b>. The same four failures reproduce on the
+      supported Node 22.16, so they are not caused by Node 26.
+    </p>
+    <p>
+      The only setup blocker is that Node 26 no longer bundles Corepack, so
+      <code>yarn</code> is missing on a clean install until Corepack is installed
+      manually. After that, <code>yarn install --immutable</code> and
+      <code>yarn test:integration</code> run normally.
+    </p>
+    <table>
+      <tr>
+        <th>Check</th>
+        <th>Result</th>
+      </tr>
+      <tr>
+        <td>Fresh clone at <code>6e780a9</code></td>
+        <td><span class="good">Pass</span></td>
+      </tr>
+      <tr>
+        <td><code>yarn install --immutable</code> as written</td>
+        <td>
+          <span class="bad">Fail</span> &mdash; <code>yarn</code> not found.
+          Passes after <code>npm install -g corepack@0.36.0</code> and
+          <code>corepack enable</code> (not in the README).
+        </td>
+      </tr>
+      <tr>
+        <td>
+          <code>yarn test:integration</code> &mdash; Node 26.13.1
+        </td>
+        <td>
+          <span class="bad">Fail</span> &mdash; 4 failed, 49 passed (53);
+          5 files (1 failed, 4 passed); 172.19&nbsp;s.
+        </td>
+      </tr>
+      <tr>
+        <td>
+          <code>yarn test:integration</code> &mdash; Node 22.16
+        </td>
+        <td>
+          <span class="bad">Fail</span> &mdash; 4 failed, 49 passed (53);
+          184.89&nbsp;s.
+        </td>
+      </tr>
+      <tr>
+        <td>Integration files passing</td>
+        <td>4 of 5 &mdash; collections, documents, shares, users.</td>
+      </tr>
+      <tr>
+        <td>Testcontainers cleanup</td>
+        <td>
+          <span class="good">Pass</span> &mdash; no
+          <code>testcontainers</code> or <code>ryuk</code> containers left.
+        </td>
+      </tr>
+      <tr>
+        <td>Linux CI at <code>6e780a9</code></td>
+        <td>
+          <span class="good">Pass</span> &mdash;
+          <a href="https://github.com/alphatrann/outline/actions/runs/44464220856"
+            >run 44464220856</a
+          >.
+        </td>
+      </tr>
+      <tr>
+        <td>K16 &ldquo;3 consecutive green runs&rdquo; criterion</td>
+        <td>
+          <span class="bad">Not met</span> &mdash; the suite is red; one run per
+          Node version was captured and no rerun was performed for this report.
+        </td>
+      </tr>
+      <tr>
+        <td><b>Verdict</b></td>
+        <td>
+          <b>Harness ready; Flow 3 red on Windows.</b> Fix the revisions
+          integration flow before treating Deliverable H as green.
+        </td>
+      </tr>
+    </table>
+
+    <h2>2. Scope and method</h2>
+    <p>
+      K16 is an <b>integration-testing</b> deliverable, not a unit-test
+      deliverable. The K16 plan is scope-locked to four flows and makes
+      <code>yarn test:integration</code> the binding command:
+    </p>
+    <ul>
+      <li>
+        <b>K16 plan &sect;1.6:</b> &ldquo;Scope-locked. Only the 4 flows in
+        &sect;2. Everything else is mocked or excluded.&rdquo;
+      </li>
+      <li>
+        <b>K16 plan &sect;5:</b> &ldquo;Pass = &hellip; 3 consecutive green runs
+        of <code>yarn test:integration</code> for the touched files.&rdquo;
+      </li>
+      <li>
+        <b>README, Integration tests:</b> &ldquo;Run the whole suite with one
+        command: <code>yarn test:integration</code>.&rdquo;
+      </li>
+    </ul>
+    <p>
+      This report therefore covers only the committed integration suite at
+      <code>6e780a9</code> &mdash; the five files listed in section 3. The
+      general unit-test section of the README (<code>make test</code> /
+      <code>yarn test</code>) is outside Deliverable H and is not reported here.
+      Uncommitted local test files are also excluded.
+    </p>
+    <p class="note">
+      <b>No rerun.</b> This revision reuses the integration-only run captured
+      during the clean-machine session. The Node 26 and Node 22 logs are the
+      evidence; the suite was not executed again for this report.
+    </p>
+
+    <h2>3. Environment</h2>
+    <table>
+      <tr>
+        <th>Item</th>
+        <th>Value</th>
+      </tr>
+      <tr>
+        <td>OS</td>
+        <td>Windows 11 Home Single Language, 10.0.26300</td>
+      </tr>
+      <tr>
+        <td>Hardware</td>
+        <td>8 logical CPUs, 15.7&nbsp;GB RAM</td>
+      </tr>
+      <tr>
+        <td>Node</td>
+        <td>
+          <code>v26.13.1</code> (portable build from nodejs.org; the version
+          <code>.nvmrc</code> <code>26</code> resolves to today)
+        </td>
+      </tr>
+      <tr>
+        <td>npm</td>
+        <td><code>11.20.0</code></td>
+      </tr>
+      <tr>
+        <td>Corepack</td>
+        <td>
+          <code>0.36.0</code>, installed manually with npm &mdash; not bundled
+          with Node 26
+        </td>
+      </tr>
+      <tr>
+        <td>Yarn</td>
+        <td><code>4.18.1</code> via Corepack</td>
+      </tr>
+      <tr>
+        <td>Git</td>
+        <td><code>2.50.1.windows.1</code></td>
+      </tr>
+      <tr>
+        <td>Docker</td>
+        <td>
+          Docker Desktop, engine <code>29.8.0</code>, Compose
+          <code>5.5.1</code>
+        </td>
+      </tr>
+      <tr>
+        <td>Clone</td>
+        <td>
+          <code>%TEMP%\issue24\outline-clean</code>, detached at
+          <code>6e780a947c6d2a53f14b2d0e90d6ca04f962ccdc</code>
+        </td>
+      </tr>
+      <tr>
+        <td>Environment files</td>
+        <td>
+          <code>.env</code> absent; committed <code>.env.test</code> present
+        </td>
+      </tr>
+      <tr>
+        <td>Yarn cache</td>
+        <td>
+          Fresh <code>%TEMP%\issue24\yarn-global</code>; 2,108 packages,
+          1.04&nbsp;GiB fetched
+        </td>
+      </tr>
+      <tr>
+        <td>Integration project</td>
+        <td>
+          <code>server-integration</code>: <code>server/**/*.integration.test.ts</code>,
+          serial, 30&nbsp;s test timeout
+        </td>
+      </tr>
+    </table>
+    <p class="note">
+      <b>Cleanliness deviations.</b> This was not a freshly installed operating
+      system: the same physical Windows 11 machine was used, Docker Desktop was
+      already installed, and the <code>postgres:17</code>/<code>redis:8</code>
+      images were already cached. The Yarn cache was empty. Node was a portable
+      zip and the system Node/Yarn/Corepack directories were removed from
+      <code>PATH</code> for the run.
+    </p>
+
+    <h2>4. Integration suite under test</h2>
+    <p>
+      The committed suite at <code>6e780a9</code> has five files and 53 tests:
+    </p>
+    <table>
+      <tr>
+        <th>File</th>
+        <th>K16 flow</th>
+        <th>Result</th>
+      </tr>
+      <tr>
+        <td><code>server/routes/api/collections/collections.integration.test.ts</code></td>
+        <td>1 &middot; User/Team + collection permissions</td>
+        <td><span class="good">Pass</span></td>
+      </tr>
+      <tr>
+        <td><code>server/routes/api/documents/documents.integration.test.ts</code></td>
+        <td>2 &middot; Document lifecycle</td>
+        <td><span class="good">Pass</span></td>
+      </tr>
+      <tr>
+        <td><code>server/routes/api/revisions/revisions.integration.test.ts</code></td>
+        <td>3 &middot; Revisions</td>
+        <td><span class="bad">Fail &mdash; 4 tests</span></td>
+      </tr>
+      <tr>
+        <td><code>server/routes/api/shares/shares.integration.test.ts</code></td>
+        <td>4 &middot; Search + share link</td>
+        <td><span class="good">Pass</span></td>
+      </tr>
+      <tr>
+        <td><code>server/routes/api/users/users.integration.test.ts</code></td>
+        <td>1 &middot; User/Team</td>
+        <td><span class="good">Pass</span></td>
+      </tr>
+    </table>
+    <p class="small">
+      The README&rsquo;s &ldquo;What success looks like&rdquo; example still says
+      <code>2 passed (2)</code> files and <code>3 passed (3)</code> tests. The
+      current suite is five files and 53 tests; see gap G3.
+    </p>
+
+    <h2>5. Setup walkthrough</h2>
+    <ol>
+      <li>
+        <b>Clone.</b> Fresh clone of
+        <code>https://github.com/alphatrann/outline.git</code>, checked out at
+        <code>6e780a947c6d2a53f14b2d0e90d6ca04f962ccdc</code>.
+      </li>
+      <li>
+        <b>Node 26.</b> <code>node -v</code> returned <code>v26.13.1</code>.
+        <code>corepack --version</code> and <code>yarn --version</code> were
+        both unrecognised commands: Node 26 no longer ships Corepack.
+      </li>
+      <li>
+        <b>Corepack workaround.</b>
+        <code>npm install -g corepack@0.36.0</code> and
+        <code>corepack enable</code>; <code>yarn --version</code> then returned
+        <code>4.18.1</code>. This step is not in the README.
+      </li>
+      <li>
+        <b>Install.</b> <code>yarn install --immutable</code> fetched 2,108
+        packages (1.04&nbsp;GiB) and completed in 19&nbsp;m&nbsp;44&nbsp;s with
+        a cold cache.
+      </li>
+      <li>
+        <b>Docker.</b> <code>docker ps</code> succeeded; Testcontainers used
+        <code>postgres:17</code> and <code>redis:8</code>.
+      </li>
+      <li>
+        <b>Run.</b> <code>yarn test:integration</code> started the containers,
+        applied every migration, ran 53 tests, and removed the containers.
+      </li>
+    </ol>
+    <p>
+      No <code>.env</code> was needed: the committed <code>.env.test</code> was
+      loaded. The documented <code>configLoader: 'native'</code> warning
+      appeared and was harmless.
+    </p>
+
+    <h2>6. Results</h2>
+    <h3>6.1 Node 26.13.1</h3>
+    <pre>Test Files  1 failed | 4 passed (5)
+     Tests  4 failed | 49 passed (53)
+  Duration  172.19s (transform 12.30s, setup 46.12s, import 8.00s, tests 103.90s, environment 0ms)</pre>
+
+    <h3>6.2 Node 22.16 comparison</h3>
+    <p>
+      The same four tests fail on Node 22.16, so this is not a Node 26
+      regression:
+    </p>
+    <pre>Test Files  1 failed | 4 passed (5)
+     Tests  4 failed | 49 passed (53)
+  Duration  184.89s (transform 13.87s, setup 55.31s, import 9.51s, tests 104.47s, environment 1ms)</pre>
+
+    <h3>6.3 Failing tests</h3>
+    <table>
+      <tr>
+        <th>Test</th>
+        <th>Failure</th>
+      </tr>
+      <tr>
+        <td>
+          <code>should create a revision asynchronously after documents.update</code>
+        </td>
+        <td>
+          <code>No revision found for document &hellip; within 15000ms</code>
+        </td>
+      </tr>
+      <tr>
+        <td>
+          <code>should not create duplicate revisions for identical updates</code>
+        </td>
+        <td><code>Test timed out in 30000ms</code></td>
+      </tr>
+      <tr>
+        <td>
+          <code>should not create duplicate revisions for concurrent identical updates</code>
+        </td>
+        <td><code>Test timed out in 30000ms</code></td>
+      </tr>
+      <tr>
+        <td>
+          <code>should restore a document to a specific revision</code>
+        </td>
+        <td>
+          <code>No revision found for document &hellip; within 15000ms</code>
+        </td>
+      </tr>
+    </table>
+    <pre>FAIL  |server-integration| server/routes/api/revisions/revisions.integration.test.ts
+      > #revisions (integration) > should create a revision asynchronously after documents.update
+Error: No revision found for document 278dde72-&hellip; within 15000ms
+ &#10095; waitForLatestRevision server/routes/api/revisions/revisions.integration.test.ts:43:9</pre>
+    <p>
+      The failure is consistent: the revision is created asynchronously by the
+      Bull worker, and no revision row appears before the 15&nbsp;s/30&nbsp;s
+      timeouts. The other four integration files pass, including the users,
+      collections, documents and shares flows.
+    </p>
+
+    <h2>7. Gaps found</h2>
+    <table>
+      <tr>
+        <th>ID</th>
+        <th>Severity</th>
+        <th>Gap</th>
+        <th>Evidence</th>
+        <th>Suggested fix (owner T)</th>
+      </tr>
+      <tr>
+        <td>G1</td>
+        <td>P1</td>
+        <td>
+          Node 26 no longer ships Corepack, so the README&rsquo;s
+          <code>yarn install --immutable</code> cannot run on a clean machine.
+          The README never says how to install Yarn/Corepack.
+        </td>
+        <td>
+          <code>corepack --version</code> and <code>yarn --version</code> are
+          unrecognised with Node 26.13.1. Installing
+          <code>corepack@0.36.0</code> from npm fixes it.
+        </td>
+        <td>
+          Add an explicit prerequisite step:
+          <code>npm install -g corepack@0.36.0 &amp;&amp; corepack enable</code>,
+          or pin Node 24 in <code>.nvmrc</code>.
+        </td>
+      </tr>
+      <tr>
+        <td>G2</td>
+        <td>P1</td>
+        <td>
+          K16 Flow 3 (revisions) is red on Windows: 4 of 53 integration tests
+          fail, all in <code>revisions.integration.test.ts</code>.
+        </td>
+        <td>
+          No revision appears within 15&nbsp;s/30&nbsp;s; the same four tests fail
+          on Node 26.13.1 and Node 22.16. The other four integration files pass.
+        </td>
+        <td>
+          Investigate the Bull worker / revision queue startup under Windows,
+          then rerun the suite three consecutive times per K16 &sect;5.
+        </td>
+      </tr>
+      <tr>
+        <td>G3</td>
+        <td>P2</td>
+        <td>README integration success example is stale.</td>
+        <td>
+          README: 2 test files / 3 tests / 72.79&nbsp;s. Current suite:
+          5 files / 53 tests / 172.19&nbsp;s.
+        </td>
+        <td>Refresh the example with the current counts and duration.</td>
+      </tr>
+      <tr>
+        <td>G4</td>
+        <td>P2</td>
+        <td>
+          <code>.nvmrc</code> <code>26</code> resolves to Node 26.13.1, which is
+          outside <code>package.json</code> engines
+          (<code>26 &lt;26.3.1</code>). CI installs from the
+          <code>engines</code> field, not <code>.nvmrc</code>, so local and CI
+          toolchains differ.
+        </td>
+        <td>
+          Local <code>node -v</code>: <code>v26.13.1</code>; the manifest allows
+          only <code>26.0.0 &lt;= version &lt; 26.3.1</code> on the 26 line.
+        </td>
+        <td>
+          Pin <code>.nvmrc</code> to <code>26.3.0</code> (or 24), or widen the
+          engines range after testing 26.13.x.
+        </td>
+      </tr>
+      <tr>
+        <td>G5</td>
+        <td>P3</td>
+        <td>
+          The issue pins SHA <code>05ef55e</code>, but that commit predates the
+          Testcontainers harness (PR #7) and the integration README section
+          (PR #35), so it cannot be the target of an integration run.
+        </td>
+        <td>
+          <code>05ef55e</code> is from 2026-09-29; PR #7 merged 2026-10-06 and
+          PR #35 merged 2026-10-19. This run used <code>6e780a9</code>
+          (2026-11-19).
+        </td>
+        <td>Update the pinned SHA in the sprint issue template.</td>
+      </tr>
+    </table>
+    <p class="note">
+      Per the team&rsquo;s instruction for this run, no separate GitHub issues
+      were created for these gaps. They are recorded here and summarized in the
+      issue #24 comment; the recommendation is to file them under owner T after
+      review.
+    </p>
+
+    <h2>8. What works</h2>
+    <ul>
+      <li>
+        Cold <code>yarn install --immutable</code> succeeds after the Corepack
+        step: 2,108 packages, 1.04&nbsp;GiB, 19&nbsp;m&nbsp;44&nbsp;s.
+      </li>
+      <li>
+        Testcontainers boots disposable Postgres 17 and Redis 8 containers,
+        applies every migration, and removes the containers at the end.
+      </li>
+      <li>
+        Four of the five integration files pass: collections, documents, shares
+        and users &mdash; 49 of 53 tests.
+      </li>
+      <li>
+        No <code>.env</code> is required; the committed <code>.env.test</code>
+        is sufficient. The documented
+        <code>configLoader: 'native'</code> warning appears and is harmless.
+      </li>
+      <li>
+        The same four revision failures reproduce on Node 22.16, so the green
+        Linux CI at the same commit confirms they are Windows-specific rather
+        than a broken main branch.
+      </li>
+    </ul>
+
+    <h2>9. Recommendations for T</h2>
+    <ol>
+      <li>
+        <b>G1:</b> add the Corepack/Yarn prerequisite to the README (and the
+        onboarding guide), or pin Node 24.
+      </li>
+      <li>
+        <b>G2:</b> fix the revisions integration flow on Windows, then produce
+        the three consecutive green runs required by K16 &sect;5.
+      </li>
+      <li>
+        <b>G3:</b> refresh the README&rsquo;s integration success example to
+        five files / 53 tests.
+      </li>
+      <li>
+        <b>G4:</b> align <code>.nvmrc</code> with the <code>engines</code>
+        range and CI.
+      </li>
+      <li>
+        <b>G5:</b> update the issue template&rsquo;s pinned SHA so future
+        clean-machine tasks target a commit that contains the harness.
+      </li>
+    </ol>
+
+    <h2>10. Limitations</h2>
+    <ul>
+      <li>
+        <b>No rerun.</b> This revision reuses the integration-only run captured
+        earlier. One run per Node version is reported; the K16
+        &ldquo;3 consecutive green runs&rdquo; criterion is not met because the
+        suite is red.
+      </li>
+      <li>
+        Not a freshly installed OS: the same Windows 11 machine was used, with
+        Docker Desktop and the <code>postgres:17</code>/<code>redis:8</code>
+        images already present. The Yarn cache was cold, but image pulls were
+        not exercised.
+      </li>
+      <li>
+        Node 26.13.1 is the local resolution of <code>.nvmrc</code> 26; CI uses
+        the <code>package.json</code> engines range and therefore a different
+        26.x patch.
+      </li>
+      <li>
+        Windows-only run. Linux CI is green but was not reproduced locally.
+      </li>
+      <li>
+        Uncommitted local test files are not part of the five-file suite at
+        <code>6e780a9</code> and are not included in this report.
+      </li>
+    </ul>
+
+    <h2>11. Reproduction</h2>
+    <pre># Fresh clone at the commit used for this run
+git clone https://github.com/alphatrann/outline.git %TEMP%\issue24\outline-clean
+cd %TEMP%\issue24\outline-clean
+git checkout 6e780a947c6d2a53f14b2d0e90d6ca04f962ccdc
+
+# Clean toolchain: portable Node 26.13.1, no system Node/Yarn on PATH
+node -v                      # v26.13.1
+corepack --version           # not recognised
+yarn --version               # not recognised
+
+# README's install step fails; this workaround is not documented
+npm install -g corepack@0.36.0
+corepack enable
+yarn install --immutable
+
+# Integration suite (the K16 scope)
+docker ps
+yarn test:integration</pre>
+    <p class="small">
+      Logs are local and outside the repository:
+      <code>%TEMP%\issue24\logs\yarn-test-integration-node26.txt</code> and
+      <code>%TEMP%\issue24\logs\yarn-test-integration-node22.txt</code>.
+    </p>
+
+    <h2>12. Evidence excerpts</h2>
+    <pre># Node 26.13.1
+Test Files  1 failed | 4 passed (5)
+     Tests  4 failed | 49 passed (53)
+  Duration  172.19s
+
+# Node 22.16
+Test Files  1 failed | 4 passed (5)
+     Tests  4 failed | 49 passed (53)
+  Duration  184.89s
+
+# Failure detail
+FAIL  |server-integration| server/routes/api/revisions/revisions.integration.test.ts
+      > #revisions (integration) > should create a revision asynchronously after documents.update
+Error: No revision found for document 278dde72-&hellip; within 15000ms
+
+# Linux CI at 6e780a9
+completed / success
+https://github.com/alphatrann/outline/actions/runs/44464220856</pre>
+  </body>
+</html>
