@@ -94,7 +94,7 @@ Files named `*.integration.test.ts` under `server/` belong to their own Vitest p
 
 Dependencies:
 
-- Node at the version in `.nvmrc`, Yarn 4, and dependencies installed with `yarn install --immutable`.
+- Node at the version in `.nvmrc` (Node 26), Yarn 4, and dependencies installed with `yarn install --immutable`. Node 26 no longer bundles Corepack, so on a clean machine install and enable it first (`npm install -g corepack && corepack enable`).
 - A running Docker daemon — `docker ps` must succeed.
 - Nothing else. There is no need for local Postgres or Redis, a `.env` file (the committed `.env.test` is loaded), or a previous `yarn build:server`.
 
@@ -109,9 +109,9 @@ yarn test:integration
 **What success looks like** — Vitest prints a summary and exits with status `0`:
 
 ```text
- Test Files  2 passed (2)
-      Tests  3 passed (3)
-   Duration  72.79s (transform 13.29s, setup 44.30s, import 8.28s, tests 1.55s)
+ Test Files  5 passed (5)
+      Tests  53 passed (53)
+   Duration  28.65s (transform 2.73s, setup 9.12s, import 1.75s, tests 12.17s)
 ```
 
 The first run takes around six minutes because it pulls the `postgres:17` and `redis:8` images and migrates a fresh database; later runs are typically one to two minutes. Containers are cleaned up automatically, so `docker ps` shows nothing from the run afterwards. The `configLoader: 'native'` warning printed above the run is expected and harmless.

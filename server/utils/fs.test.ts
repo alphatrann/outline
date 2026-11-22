@@ -1,4 +1,10 @@
-import { serializeFilename, deserializeFilename, stringByteLength } from "./fs";
+import {
+  serializeFilename,
+  deserializeFilename,
+  stringByteLength,
+  requireDirectory,
+  __setRequireDirectoryCache,
+} from "./fs";
 
 describe("serializeFilename", () => {
   it("should serialize forward slashes", () => {
@@ -62,5 +68,25 @@ describe("stringByteLength", () => {
     expect(stringByteLength("a")).toBe(1);
     expect(stringByteLength("🦄")).toBe(4);
     expect(stringByteLength("你好")).toBe(6);
+  });
+});
+
+describe("requireDirectory", () => {
+  it("should match cached POSIX suffix for Windows backslash paths", () => {
+    const fakeMod = { default: "RevisionsProcessor" };
+    __setRequireDirectoryCache("test-win-cache/processors", {
+      "../test-win-cache/processors/RevisionsProcessor.ts": fakeMod,
+      "../test-win-cache/processors/index.ts": { default: "index" },
+      "../test-win-cache/processors/RevisionsProcessor.test.ts": {
+        default: "test",
+      },
+    });
+
+    expect(
+      requireDirectory("C:\\repo\\server\\test-win-cache\\processors")
+    ).toEqual([[fakeMod, "RevisionsProcessor"]]);
+    expect(requireDirectory("/repo/server/test-win-cache/processors")).toEqual([
+      [fakeMod, "RevisionsProcessor"],
+    ]);
   });
 });
