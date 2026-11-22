@@ -112,8 +112,9 @@ export function __setRequireDirectoryCache(
  * @returns An array of tuples containing the required files and their names.
  */
 export function requireDirectory<T>(dirName: string): [T, string][] {
+  const normalizedDir = dirName.replace(/\\/g, "/");
   for (const [suffix, modules] of requireDirectoryCache) {
-    if (dirName.endsWith(suffix)) {
+    if (normalizedDir.endsWith(suffix)) {
       return Object.entries(modules)
         .filter(
           ([filePath]) =>
