@@ -1,6 +1,7 @@
 import {
   buildAdmin,
   buildDraftDocument,
+  buildPin,
   buildViewer,
   buildCollection,
   buildDocument,
@@ -18,7 +19,14 @@ import {
   TeamPreference,
 } from "@shared/types";
 import type { NavigationNode } from "@shared/types";
-import { Collection, Document, Event, UserMembership } from "@server/models";
+import {
+  Collection,
+  Document,
+  Event,
+  Pin,
+  Revision,
+  UserMembership,
+} from "@server/models";
 
 const server = getTestServer();
 cleanBetweenTests();
@@ -1584,5 +1592,381 @@ describe("#documents response and edge details (integration)", () => {
         where: { name: "documents.remove_user", documentId: document.id },
       })
     ).toEqual(1);
+  });
+});
+
+/**
+ * Pins the document mover and restorer commands through the API: the response
+ * contents, the emitted event, pins, and index handling when reordering.
+ */
+describe("document mover and restorer details (integration)", () => {
+  type Actor = Parameters<typeof server.post>[1];
+
+  const setup = async () => {
+    const team = await buildTeam();
+    const user = await buildUser({ teamId: team.id });
+    const from = await buildCollection({ teamId: team.id, userId: user.id });
+    const to = await buildCollection({ teamId: team.id, userId: user.id });
+    return { team, user, from, to };
+  };
+  const move = (user: Actor, body: Record<string, unknown>) =>
+    server.post("/api/documents.move", user, { body });
+  const topLevel = async (collectionId: string) =>
+    (await loadStructure(collectionId)).map((n) => n.id);
+
+  it("should report every moved document, the event and the policies", async () => {
+    const { user, from, to } = await setup();
+    const parent = await createPublished(user, {
+      title: "Parent",
+      collectionId: from.id,
+    });
+    const child = await createPublished(user, {
+      title: "Child",
+      collectionId: from.id,
+      parentDocumentId: parent.id,
+    });
+
+    const res = await move(user, { id: parent.id, collectionId: to.id });
+    expect(res.status).toEqual(200);
+    const body = await res.json();
+
+    expect(body.data.documents.map((d: { id: string }) => d.id)).toEqual([
+      child.id,
+      parent.id,
+    ]);
+    expect(
+      body.data.documents.map((d: { collectionId: string }) => d.collectionId)
+    ).toEqual([to.id, to.id]);
+    expect(body.data.collections).toEqual([]);
+    expect(body.policies.map((p: { id: string }) => p.id).sort()).toEqual(
+      [child.id, parent.id].sort()
+    );
+
+    const event = await Event.findOne({
+      where: { name: "documents.move", documentId: parent.id },
+      rejectOnEmpty: true,
+    });
+    expect(event.data).toEqual({
+      collectionIds: [from.id, to.id],
+      documentIds: [child.id, parent.id],
+    });
+
+    expect(await topLevel(from.id)).toEqual([]);
+    const target = await loadStructure(to.id);
+    expect(target.map((n) => n.id)).toEqual([parent.id]);
+    expect(target[0].children.map((n) => n.id)).toEqual([child.id]);
+  });
+
+  it("should report only the document and no policies when reordering", async () => {
+    const { user, from } = await setup();
+    const a = await createPublished(user, {
+      title: "A",
+      collectionId: from.id,
+    });
+    await createPublished(user, { title: "B", collectionId: from.id });
+
+    const res = await move(user, {
+      id: a.id,
+      collectionId: from.id,
+      index: 1,
+    });
+    const body = await res.json();
+    expect(body.data.documents.map((d: { id: string }) => d.id)).toEqual([
+      a.id,
+    ]);
+    expect(body.policies).toEqual([]);
+
+    const event = await Event.findOne({
+      where: { name: "documents.move", documentId: a.id },
+      rejectOnEmpty: true,
+    });
+    expect(event.data).toEqual({
+      collectionIds: [from.id],
+      documentIds: [a.id],
+    });
+  });
+
+  it("should drop only the pin of the collection the document left", async () => {
+    const { team, user, from, to } = await setup();
+    const doc = await createPublished(user, {
+      title: "Pinned",
+      collectionId: from.id,
+    });
+    await buildPin({
+      teamId: team.id,
+      createdById: user.id,
+      documentId: doc.id,
+      collectionId: from.id,
+    });
+    await buildPin({
+      teamId: team.id,
+      createdById: user.id,
+      documentId: doc.id,
+      collectionId: null,
+    });
+
+    const res = await move(user, { id: doc.id, collectionId: to.id });
+    expect(res.status).toEqual(200);
+
+    const pins = await Pin.findAll({ where: { documentId: doc.id } });
+    expect(pins.map((p) => p.collectionId)).toEqual([null]);
+  });
+
+  it("should keep a pin when the document stays in its collection", async () => {
+    const { team, user, from } = await setup();
+    const doc = await createPublished(user, {
+      title: "Pinned",
+      collectionId: from.id,
+    });
+    await createPublished(user, { title: "Other", collectionId: from.id });
+    await buildPin({
+      teamId: team.id,
+      createdById: user.id,
+      documentId: doc.id,
+      collectionId: from.id,
+    });
+
+    await move(user, { id: doc.id, collectionId: from.id, index: 1 });
+
+    expect(await Pin.count({ where: { documentId: doc.id } })).toEqual(1);
+  });
+
+  it("should move a draft without touching either collection structure", async () => {
+    const { team, user, from, to } = await setup();
+    const keep = await createPublished(user, {
+      title: "Keep",
+      collectionId: from.id,
+    });
+    const draft = await buildDraftDocument({
+      teamId: team.id,
+      userId: user.id,
+      collectionId: from.id,
+    });
+
+    const res = await move(user, { id: draft.id, collectionId: to.id });
+    expect(res.status).toEqual(200);
+
+    const row = await Document.findByPk(draft.id, { rejectOnEmpty: true });
+    expect(row.collectionId).toEqual(to.id);
+    expect(row.publishedAt).toBeNull();
+    expect(await topLevel(from.id)).toEqual([keep.id]);
+    expect(await topLevel(to.id)).toEqual([]);
+    const body = await res.json();
+    expect(body.data.documents.map((d: { id: string }) => d.id)).toEqual([
+      draft.id,
+    ]);
+  });
+
+  describe("index handling", () => {
+    const abc = async () => {
+      const ctx = await setup();
+      for (const title of ["A", "B", "C"]) {
+        await createPublished(ctx.user, {
+          title,
+          collectionId: ctx.from.id,
+        });
+      }
+      const [x, y, z] = await topLevel(ctx.from.id);
+      return { ...ctx, x, y, z };
+    };
+
+    it("should move an item up to the front", async () => {
+      const { user, from, x, y, z } = await abc();
+      await move(user, { id: z, collectionId: from.id, index: 0 });
+      expect(await topLevel(from.id)).toEqual([z, x, y]);
+    });
+
+    it("should keep the order when moving to its own slot", async () => {
+      const { user, from, x, y, z } = await abc();
+      await move(user, { id: x, collectionId: from.id, index: 0 });
+      expect(await topLevel(from.id)).toEqual([x, y, z]);
+      await move(user, { id: y, collectionId: from.id, index: 1 });
+      expect(await topLevel(from.id)).toEqual([x, y, z]);
+    });
+
+    it("should move an item past the end", async () => {
+      const { user, from, x, y, z } = await abc();
+      await move(user, { id: x, collectionId: from.id, index: 3 });
+      expect(await topLevel(from.id)).toEqual([y, z, x]);
+    });
+
+    it("should append when no index is given", async () => {
+      const { user, from, x, y, z } = await abc();
+      await move(user, { id: x, collectionId: from.id });
+      expect(await topLevel(from.id)).toEqual([y, z, x]);
+    });
+
+    it("should not compensate the index when the parent changes", async () => {
+      const { user, from, x, y, z } = await abc();
+      const parent = await createPublished(user, {
+        title: "P",
+        collectionId: from.id,
+      });
+      const c1 = await createPublished(user, {
+        title: "c1",
+        collectionId: from.id,
+        parentDocumentId: parent.id,
+      });
+      const c2 = await createPublished(user, {
+        title: "c2",
+        collectionId: from.id,
+        parentDocumentId: parent.id,
+      });
+
+      await move(user, { id: x, parentDocumentId: parent.id, index: 1 });
+
+      // New documents are inserted first, so the starting order is [c2, c1].
+      const node = (await loadStructure(from.id)).find(
+        (n) => n.id === parent.id
+      );
+      expect(node?.children.map((n) => n.id)).toEqual([c2.id, x, c1.id]);
+      expect(await topLevel(from.id)).toEqual([parent.id, y, z]);
+    });
+
+    it("should not compensate the index when the collection changes", async () => {
+      const { user, to, x } = await abc();
+      const b1 = await createPublished(user, {
+        title: "b1",
+        collectionId: to.id,
+      });
+      const b2 = await createPublished(user, {
+        title: "b2",
+        collectionId: to.id,
+      });
+
+      await move(user, { id: x, collectionId: to.id, index: 1 });
+
+      expect(await topLevel(to.id)).toEqual([b2.id, x, b1.id]);
+    });
+  });
+
+  describe("restore", () => {
+    it.each(["deleted", "archived"] as const)(
+      "should restore a %s document into another collection",
+      async (state) => {
+        const { user, from, to } = await setup();
+        const doc = await createPublished(user, {
+          title: "Wanderer",
+          collectionId: from.id,
+        });
+        if (state === "deleted") {
+          await server.post("/api/documents.delete", user, {
+            body: { id: doc.id },
+          });
+        } else {
+          await server.post("/api/documents.archive", user, {
+            body: { id: doc.id },
+          });
+        }
+
+        const res = await server.post("/api/documents.restore", user, {
+          body: { id: doc.id, collectionId: to.id },
+        });
+        expect(res.status).toEqual(200);
+
+        const row = await Document.findByPk(doc.id, { rejectOnEmpty: true });
+        expect(row.collectionId).toEqual(to.id);
+        expect(row.deletedAt).toBeNull();
+        expect(row.archivedAt).toBeNull();
+        expect(await topLevel(to.id)).toEqual([doc.id]);
+        expect(await topLevel(from.id)).toEqual([]);
+      }
+    );
+
+    it("should refuse to restore into an archived collection", async () => {
+      const { team, user, from } = await setup();
+      const archived = await buildCollection({
+        teamId: team.id,
+        userId: user.id,
+        archivedAt: new Date(),
+      });
+      const doc = await createPublished(user, {
+        title: "Stuck",
+        collectionId: from.id,
+      });
+      await server.post("/api/documents.delete", user, {
+        body: { id: doc.id },
+      });
+
+      const res = await server.post("/api/documents.restore", user, {
+        body: { id: doc.id, collectionId: archived.id },
+      });
+
+      expect(res.status).toEqual(400);
+      expect((await res.json()).message).toContain("Unable to restore");
+      expect(await Document.findByPk(doc.id)).toBeNull();
+    });
+
+    it("should restore a document to a revision", async () => {
+      const { team, user, from } = await setup();
+      const doc = await buildDocument({
+        teamId: team.id,
+        userId: user.id,
+        collectionId: from.id,
+        title: "Original title",
+        text: "original text",
+      });
+      const revision = Revision.buildFromDocument(doc);
+      await revision.save();
+      await doc.update({ title: "Changed title", text: "changed text" });
+
+      const res = await server.post("/api/documents.restore", user, {
+        body: { id: doc.id, revisionId: revision.id },
+      });
+      expect(res.status).toEqual(200);
+
+      const row = await Document.findByPk(doc.id, { rejectOnEmpty: true });
+      expect(row.title).toEqual("Original title");
+      expect(row.text).toContain("original text");
+      expect(
+        await Event.count({
+          where: { name: "documents.restore", documentId: doc.id },
+        })
+      ).toEqual(1);
+    });
+
+    it("should require a revision for a live document", async () => {
+      const { user, from } = await setup();
+      const doc = await createPublished(user, {
+        title: "Live",
+        collectionId: from.id,
+      });
+
+      const res = await server.post("/api/documents.restore", user, {
+        body: { id: doc.id },
+      });
+
+      expect(res.status).toEqual(400);
+      expect((await res.json()).message).toContain("revisionId is required");
+    });
+
+    it("should reject a revision of another document or a missing one", async () => {
+      const { team, user, from } = await setup();
+      const doc = await buildDocument({
+        teamId: team.id,
+        userId: user.id,
+        collectionId: from.id,
+      });
+      const other = await buildDocument({
+        teamId: team.id,
+        userId: user.id,
+        collectionId: from.id,
+      });
+      const foreign = Revision.buildFromDocument(other);
+      await foreign.save();
+
+      const wrong = await server.post("/api/documents.restore", user, {
+        body: { id: doc.id, revisionId: foreign.id },
+      });
+      expect(wrong.status).toEqual(403);
+
+      const missing = await server.post("/api/documents.restore", user, {
+        body: {
+          id: doc.id,
+          revisionId: "00000000-0000-4000-8000-000000000000",
+        },
+      });
+      expect(missing.status).toEqual(404);
+    });
   });
 });
