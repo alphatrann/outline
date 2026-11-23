@@ -1,7 +1,15 @@
 import { CollectionPermission } from "@shared/types";
-import { Collection, Document, Share, UserMembership } from "@server/models";
+import {
+  Collection,
+  Document,
+  GroupMembership,
+  Import,
+  Share,
+  UserMembership,
+} from "@server/models";
 import {
   buildAdmin,
+  buildAttachment,
   buildCollection,
   buildDocument,
   buildGroup,
@@ -661,5 +669,553 @@ describe("cross-team isolation (integration)", () => {
         where: { collectionId: collectionA.id, userId: userB.id },
       })
     ).toEqual(0);
+  });
+});
+
+describe("#collections.documents (integration)", () => {
+  it("should return the document structure for a reader", async () => {
+    const team = await buildTeam();
+    const user = await buildUser({ teamId: team.id });
+    const collection = await buildCollection({
+      teamId: team.id,
+      userId: user.id,
+    });
+    const document = await buildDocument({
+      teamId: team.id,
+      userId: user.id,
+      collectionId: collection.id,
+      title: "Structure doc",
+    });
+
+    const res = await server.post("/api/collections.documents", user, {
+      body: { id: collection.id },
+    });
+    const body = await res.json();
+
+    expect(res.status).toEqual(200);
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0].id).toEqual(document.id);
+    expect(body.data[0].title).toEqual("Structure doc");
+  });
+
+  it("should return an empty array for an empty collection", async () => {
+    const team = await buildTeam();
+    const user = await buildUser({ teamId: team.id });
+    const collection = await buildCollection({
+      teamId: team.id,
+      userId: user.id,
+    });
+
+    const res = await server.post("/api/collections.documents", user, {
+      body: { id: collection.id },
+    });
+    const body = await res.json();
+
+    expect(res.status).toEqual(200);
+    expect(body.data).toEqual([]);
+  });
+
+  it("should deny a user without access to a private collection", async () => {
+    const team = await buildTeam();
+    const owner = await buildUser({ teamId: team.id });
+    const outsider = await buildUser({ teamId: team.id });
+    const collection = await buildCollection({
+      teamId: team.id,
+      userId: owner.id,
+      permission: null,
+    });
+    await buildDocument({
+      teamId: team.id,
+      userId: owner.id,
+      collectionId: collection.id,
+      title: "Private structure",
+    });
+
+    const res = await server.post("/api/collections.documents", outsider, {
+      body: { id: collection.id },
+    });
+
+    expect(res.status).toEqual(403);
+    expect(JSON.stringify(await res.json())).not.toContain("Private structure");
+  });
+});
+
+describe("#collections.import (integration)", () => {
+  it("should create an import from an attachment", async () => {
+    const team = await buildTeam();
+    const admin = await buildAdmin({ teamId: team.id });
+    const attachment = await buildAttachment({
+      teamId: team.id,
+      userId: admin.id,
+    });
+
+    const res = await server.post("/api/collections.import", admin, {
+      body: {
+        attachmentId: attachment.id,
+        permission: CollectionPermission.Read,
+        format: "outline-markdown",
+      },
+    });
+    const body = await res.json();
+
+    expect(res.status).toEqual(200);
+    expect(body.success).toEqual(true);
+
+    const imports = await Import.findAll({ where: { teamId: team.id } });
+    expect(imports).toHaveLength(1);
+    expect(imports[0].service).toEqual("markdown");
+    expect(imports[0].state).toEqual("created");
+    expect(imports[0].name).toEqual(attachment.name);
+    expect(imports[0].createdById).toEqual(admin.id);
+    expect(imports[0].integrationId).toBeNull();
+    expect(imports[0].input).toHaveLength(1);
+    expect(imports[0].input[0].permission).toEqual(CollectionPermission.Read);
+    expect(imports[0].input[0].externalId).toBeTruthy();
+  });
+
+  it("should default to the JSON service without a permission", async () => {
+    const team = await buildTeam();
+    const admin = await buildAdmin({ teamId: team.id });
+    const attachment = await buildAttachment({
+      teamId: team.id,
+      userId: admin.id,
+    });
+
+    const res = await server.post("/api/collections.import", admin, {
+      body: { attachmentId: attachment.id },
+    });
+    expect(res.status).toEqual(200);
+
+    const [imported] = await Import.findAll({ where: { teamId: team.id } });
+    expect(imported.service).toEqual("json");
+    expect(imported.input[0].permission).toBeUndefined();
+  });
+
+  it("should deny non-admins from importing", async () => {
+    const team = await buildTeam();
+    const user = await buildUser({ teamId: team.id });
+    const attachment = await buildAttachment({
+      teamId: team.id,
+      userId: user.id,
+    });
+
+    const res = await server.post("/api/collections.import", user, {
+      body: { attachmentId: attachment.id },
+    });
+
+    expect(res.status).toEqual(403);
+    expect(await Import.count({ where: { teamId: team.id } })).toEqual(0);
+  });
+
+  it("should deny importing another team's attachment", async () => {
+    const team = await buildTeam();
+    const admin = await buildAdmin({ teamId: team.id });
+    const foreign = await buildAttachment();
+
+    const res = await server.post("/api/collections.import", admin, {
+      body: { attachmentId: foreign.id },
+    });
+
+    expect([403, 404]).toContain(res.status);
+    expect(await Import.count({ where: { teamId: team.id } })).toEqual(0);
+  });
+});
+
+describe("#collections group memberships (integration)", () => {
+  async function setup() {
+    const team = await buildTeam();
+    const admin = await buildAdmin({ teamId: team.id });
+    const collection = await buildCollection({
+      teamId: team.id,
+      userId: admin.id,
+      permission: null,
+    });
+    const group = await buildGroup({ teamId: team.id, userId: admin.id });
+    return { team, admin, collection, group };
+  }
+
+  it("should add a group and then update its permission in place", async () => {
+    const { admin, collection, group } = await setup();
+
+    const created = await server.post("/api/collections.add_group", admin, {
+      body: {
+        id: collection.id,
+        groupId: group.id,
+        permission: CollectionPermission.Read,
+      },
+    });
+    const createdBody = await created.json();
+    expect(created.status).toEqual(200);
+    expect(createdBody.data.groupMemberships).toHaveLength(1);
+    expect(createdBody.data.groupMemberships[0].permission).toEqual(
+      CollectionPermission.Read
+    );
+    expect(createdBody.data.groupMemberships[0].groupId).toEqual(group.id);
+
+    const updated = await server.post("/api/collections.add_group", admin, {
+      body: {
+        id: collection.id,
+        groupId: group.id,
+        permission: CollectionPermission.ReadWrite,
+      },
+    });
+    expect(updated.status).toEqual(200);
+
+    const rows = await GroupMembership.findAll({
+      where: { collectionId: collection.id, groupId: group.id },
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].permission).toEqual(CollectionPermission.ReadWrite);
+    expect(rows[0].createdById).toEqual(admin.id);
+  });
+
+  it("should deny adding a group without update access", async () => {
+    const { team, collection, group } = await setup();
+    const member = await buildUser({ teamId: team.id });
+
+    const res = await server.post("/api/collections.add_group", member, {
+      body: { id: collection.id, groupId: group.id },
+    });
+
+    expect(res.status).toEqual(403);
+    expect(
+      await GroupMembership.count({ where: { collectionId: collection.id } })
+    ).toEqual(0);
+  });
+
+  it("should remove a group and reject removing one that is not a member", async () => {
+    const { team, admin, collection, group } = await setup();
+    await server.post("/api/collections.add_group", admin, {
+      body: { id: collection.id, groupId: group.id },
+    });
+
+    const removed = await server.post("/api/collections.remove_group", admin, {
+      body: { id: collection.id, groupId: group.id },
+    });
+    expect(removed.status).toEqual(200);
+    expect((await removed.json()).success).toEqual(true);
+    expect(
+      await GroupMembership.count({ where: { collectionId: collection.id } })
+    ).toEqual(0);
+
+    const other = await buildGroup({ teamId: team.id, userId: admin.id });
+    const missing = await server.post("/api/collections.remove_group", admin, {
+      body: { id: collection.id, groupId: other.id },
+    });
+    expect(missing.status).toEqual(400);
+    expect((await missing.json()).message).toEqual(
+      "This Group is not a part of the collection"
+    );
+  });
+
+  it("should filter group memberships by query and permission", async () => {
+    const { team, admin, collection, group } = await setup();
+    await group.update({ name: "Alpha Engineers" });
+    const second = await buildGroup({
+      teamId: team.id,
+      userId: admin.id,
+      name: "Beta Designers",
+    });
+    await server.post("/api/collections.add_group", admin, {
+      body: {
+        id: collection.id,
+        groupId: group.id,
+        permission: CollectionPermission.Read,
+      },
+    });
+    await server.post("/api/collections.add_group", admin, {
+      body: {
+        id: collection.id,
+        groupId: second.id,
+        permission: CollectionPermission.ReadWrite,
+      },
+    });
+
+    const all = await (
+      await server.post("/api/collections.group_memberships", admin, {
+        body: { id: collection.id },
+      })
+    ).json();
+    expect(all.pagination.total).toEqual(2);
+    expect(all.data.groups).toHaveLength(2);
+
+    const byQuery = await (
+      await server.post("/api/collections.group_memberships", admin, {
+        body: { id: collection.id, query: "engineers" },
+      })
+    ).json();
+    expect(byQuery.pagination.total).toEqual(1);
+    expect(byQuery.data.groups[0].id).toEqual(group.id);
+
+    const byPermission = await (
+      await server.post("/api/collections.group_memberships", admin, {
+        body: { id: collection.id, permission: CollectionPermission.ReadWrite },
+      })
+    ).json();
+    expect(byPermission.pagination.total).toEqual(1);
+    expect(byPermission.data.groups[0].id).toEqual(second.id);
+    expect(byPermission.data.groupMemberships[0].permission).toEqual(
+      CollectionPermission.ReadWrite
+    );
+  });
+
+  it("should deny listing group memberships of a private collection", async () => {
+    const { team, collection } = await setup();
+    const outsider = await buildUser({ teamId: team.id });
+
+    const res = await server.post(
+      "/api/collections.group_memberships",
+      outsider,
+      { body: { id: collection.id } }
+    );
+    expect(res.status).toEqual(403);
+  });
+});
+
+describe("#collections.memberships filters (integration)", () => {
+  it("should filter user memberships by query and permission", async () => {
+    const team = await buildTeam();
+    const admin = await buildAdmin({ teamId: team.id });
+    const alice = await buildUser({ teamId: team.id, name: "Alice Walker" });
+    const bob = await buildUser({ teamId: team.id, name: "Bob Stone" });
+    const collection = await buildCollection({
+      teamId: team.id,
+      userId: admin.id,
+      permission: null,
+    });
+    await server.post("/api/collections.add_user", admin, {
+      body: {
+        id: collection.id,
+        userId: alice.id,
+        permission: CollectionPermission.Read,
+      },
+    });
+    await server.post("/api/collections.add_user", admin, {
+      body: {
+        id: collection.id,
+        userId: bob.id,
+        permission: CollectionPermission.ReadWrite,
+      },
+    });
+
+    const byQuery = await (
+      await server.post("/api/collections.memberships", admin, {
+        body: { id: collection.id, query: "alice" },
+      })
+    ).json();
+    expect(byQuery.data.users).toHaveLength(1);
+    expect(byQuery.data.users[0].id).toEqual(alice.id);
+
+    const byPermission = await (
+      await server.post("/api/collections.memberships", admin, {
+        body: { id: collection.id, permission: CollectionPermission.ReadWrite },
+      })
+    ).json();
+    expect(byPermission.data.users).toHaveLength(1);
+    expect(byPermission.data.users[0].id).toEqual(bob.id);
+    expect(byPermission.data.memberships[0].permission).toEqual(
+      CollectionPermission.ReadWrite
+    );
+  });
+});
+
+describe("#collections.update fields (integration)", () => {
+  async function setup() {
+    const team = await buildTeam();
+    const admin = await buildAdmin({ teamId: team.id });
+    const collection = await buildCollection({
+      teamId: team.id,
+      userId: admin.id,
+    });
+    return { team, admin, collection };
+  }
+
+  it("should update content, icon and color", async () => {
+    const { admin, collection } = await setup();
+    const data = {
+      type: "doc",
+      content: [
+        { type: "paragraph", content: [{ type: "text", text: "Hello" }] },
+      ],
+    };
+
+    const res = await server.post("/api/collections.update", admin, {
+      body: {
+        id: collection.id,
+        data,
+        icon: "🚀",
+        color: "#123456",
+      },
+    });
+    expect(res.status).toEqual(200);
+
+    const updated = await Collection.findByPk(collection.id, {
+      rejectOnEmpty: true,
+    });
+    expect(updated.content).toEqual(data);
+    expect(updated.icon).toEqual("🚀");
+    expect(updated.color).toEqual("#123456");
+  });
+
+  it("should update the description", async () => {
+    const { admin, collection } = await setup();
+
+    const res = await server.post("/api/collections.update", admin, {
+      body: { id: collection.id, description: "A new description" },
+    });
+    expect(res.status).toEqual(200);
+
+    const updated = await Collection.findByPk(collection.id, {
+      rejectOnEmpty: true,
+    });
+    expect(updated.description).toContain("A new description");
+  });
+
+  it("should leave fields untouched when they are not sent", async () => {
+    const { admin, collection } = await setup();
+    await collection.update({ icon: "🚀", color: "#123456" });
+    const before = await Collection.findByPk(collection.id, {
+      rejectOnEmpty: true,
+    });
+
+    const res = await server.post("/api/collections.update", admin, {
+      body: { id: collection.id, name: "Renamed" },
+    });
+    expect(res.status).toEqual(200);
+
+    const after = await Collection.findByPk(collection.id, {
+      rejectOnEmpty: true,
+    });
+    expect(after.name).toEqual("Renamed");
+    expect(after.icon).toEqual("🚀");
+    expect(after.color).toEqual("#123456");
+    expect(after.description).toEqual(before.description);
+    expect(after.content).toEqual(before.content);
+  });
+
+  it("should give the actor an admin membership when removing default access", async () => {
+    const { team, collection } = await setup();
+    const editor = await buildAdmin({ teamId: team.id });
+    await collection.update({ permission: CollectionPermission.ReadWrite });
+    expect(
+      await UserMembership.count({
+        where: { collectionId: collection.id, userId: editor.id },
+      })
+    ).toEqual(0);
+
+    const res = await server.post("/api/collections.update", editor, {
+      body: { id: collection.id, permission: null },
+    });
+    expect(res.status).toEqual(200);
+
+    const membership = await UserMembership.findOne({
+      where: { collectionId: collection.id, userId: editor.id },
+    });
+    expect(membership?.permission).toEqual(CollectionPermission.Admin);
+    expect(membership?.createdById).toEqual(editor.id);
+  });
+
+  it("should not create a membership when default access stays read-write", async () => {
+    const { team, collection } = await setup();
+    const editor = await buildAdmin({ teamId: team.id });
+    await collection.update({ permission: CollectionPermission.ReadWrite });
+
+    const res = await server.post("/api/collections.update", editor, {
+      body: { id: collection.id, permission: CollectionPermission.ReadWrite },
+    });
+    expect(res.status).toEqual(200);
+    expect(
+      await UserMembership.count({
+        where: { collectionId: collection.id, userId: editor.id },
+      })
+    ).toEqual(0);
+  });
+
+  it("should not duplicate an existing membership when removing default access", async () => {
+    const { team, collection } = await setup();
+    const editor = await buildAdmin({ teamId: team.id });
+    await collection.update({ permission: CollectionPermission.ReadWrite });
+    await UserMembership.create({
+      collectionId: collection.id,
+      userId: editor.id,
+      permission: CollectionPermission.ReadWrite,
+      createdById: editor.id,
+    });
+
+    const res = await server.post("/api/collections.update", editor, {
+      body: { id: collection.id, permission: null },
+    });
+    expect(res.status).toEqual(200);
+    const rows = await UserMembership.findAll({
+      where: { collectionId: collection.id, userId: editor.id },
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].permission).toEqual(CollectionPermission.ReadWrite);
+  });
+
+  describe("deprecatedReason", () => {
+    async function archived(reason: string | null = null) {
+      const team = await buildTeam();
+      const admin = await buildAdmin({ teamId: team.id });
+      const collection = await buildCollection({
+        teamId: team.id,
+        userId: admin.id,
+        archivedAt: new Date(),
+        deprecatedReason: reason,
+      });
+      return { admin, collection };
+    }
+
+    it("should save a reason on an archived collection", async () => {
+      const { admin, collection } = await archived();
+
+      const res = await server.post("/api/collections.update", admin, {
+        body: { id: collection.id, deprecatedReason: "  Replaced  " },
+      });
+      const body = await res.json();
+
+      expect(res.status).toEqual(200);
+      expect(body.data.deprecatedReason).toEqual("Replaced");
+      expect(body.policies).toHaveLength(1);
+      await collection.reload();
+      expect(collection.deprecatedReason).toEqual("Replaced");
+    });
+
+    it("should clear the reason", async () => {
+      const { admin, collection } = await archived("Outdated");
+
+      const res = await server.post("/api/collections.update", admin, {
+        body: { id: collection.id, deprecatedReason: null },
+      });
+      expect(res.status).toEqual(200);
+      await collection.reload();
+      expect(collection.deprecatedReason).toBeNull();
+    });
+
+    it("should refuse a reason mixed with other fields", async () => {
+      const { admin, collection } = await archived();
+
+      const res = await server.post("/api/collections.update", admin, {
+        body: {
+          id: collection.id,
+          deprecatedReason: "Outdated",
+          name: "Sneaky rename",
+        },
+      });
+      expect(res.status).toEqual(403);
+      await collection.reload();
+      expect(collection.deprecatedReason).toBeNull();
+      expect(collection.name).not.toEqual("Sneaky rename");
+    });
+
+    it("should refuse a reason on an active collection", async () => {
+      const { admin, collection } = await archived();
+      await collection.update({ archivedAt: null });
+
+      const res = await server.post("/api/collections.update", admin, {
+        body: { id: collection.id, deprecatedReason: "Outdated" },
+      });
+      expect(res.status).toEqual(403);
+    });
   });
 });

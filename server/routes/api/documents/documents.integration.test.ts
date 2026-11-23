@@ -6,6 +6,7 @@ import {
   buildDocument,
   buildShare,
   buildTeam,
+  buildTemplate,
   buildUser,
 } from "@server/test/factories";
 import { cleanBetweenTests } from "@server/test/cleanup";
@@ -841,5 +842,418 @@ describe("document policy decisions (integration)", () => {
     // Disabled for one collection: rejected by the "comment" policy.
     await collection.update({ commenting: false });
     expect((await comment()).status).toEqual(403);
+  });
+});
+
+describe("#documents.search_titles (integration)", () => {
+  async function setup() {
+    const team = await buildTeam();
+    const user = await buildUser({ teamId: team.id });
+    const collection = await buildCollection({
+      teamId: team.id,
+      userId: user.id,
+    });
+    return { team, user, collection };
+  }
+
+  it("should match documents by title and paginate", async () => {
+    const { team, user, collection } = await setup();
+    const match = await buildDocument({
+      teamId: team.id,
+      userId: user.id,
+      collectionId: collection.id,
+      title: "Quarterly roadmap",
+    });
+    await buildDocument({
+      teamId: team.id,
+      userId: user.id,
+      collectionId: collection.id,
+      title: "Unrelated note",
+    });
+
+    const res = await server.post("/api/documents.search_titles", user, {
+      body: { query: "roadmap" },
+    });
+    const body = await res.json();
+
+    expect(res.status).toEqual(200);
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0].id).toEqual(match.id);
+    expect(body.pagination.limit).toBeDefined();
+    expect(body.policies).toHaveLength(1);
+    expect(body.policies[0].id).toEqual(match.id);
+  });
+
+  it("should scope results with the collectionId filter", async () => {
+    const { team, user, collection } = await setup();
+    const other = await buildCollection({ teamId: team.id, userId: user.id });
+    const inScope = await buildDocument({
+      teamId: team.id,
+      userId: user.id,
+      collectionId: collection.id,
+      title: "Planning in scope",
+    });
+    await buildDocument({
+      teamId: team.id,
+      userId: user.id,
+      collectionId: other.id,
+      title: "Planning out of scope",
+    });
+
+    const res = await server.post("/api/documents.search_titles", user, {
+      body: { query: "planning", collectionId: collection.id },
+    });
+    const body = await res.json();
+
+    expect(res.status).toEqual(200);
+    expect(body.data.map((d: { id: string }) => d.id)).toEqual([inScope.id]);
+  });
+
+  it("should not search a collection the user cannot read", async () => {
+    const { team, user } = await setup();
+    const owner = await buildUser({ teamId: team.id });
+    const privateCollection = await buildCollection({
+      teamId: team.id,
+      userId: owner.id,
+      permission: null,
+    });
+    await buildDocument({
+      teamId: team.id,
+      userId: owner.id,
+      collectionId: privateCollection.id,
+      title: "Confidential planning",
+    });
+
+    const res = await server.post("/api/documents.search_titles", user, {
+      body: { query: "planning", collectionId: privateCollection.id },
+    });
+
+    expect(res.status).toEqual(403);
+    expect(JSON.stringify(await res.json())).not.toContain(
+      "Confidential planning"
+    );
+  });
+
+  it("should expand a documentId filter to the document's descendants", async () => {
+    const { team, user, collection } = await setup();
+    const parent = await buildDocument({
+      teamId: team.id,
+      userId: user.id,
+      collectionId: collection.id,
+      title: "Handbook parent",
+    });
+    const child = await buildDocument({
+      teamId: team.id,
+      userId: user.id,
+      collectionId: collection.id,
+      parentDocumentId: parent.id,
+      title: "Handbook child",
+    });
+    await buildDocument({
+      teamId: team.id,
+      userId: user.id,
+      collectionId: collection.id,
+      title: "Handbook sibling",
+    });
+
+    const res = await server.post("/api/documents.search_titles", user, {
+      body: { query: "handbook", documentId: parent.id },
+    });
+    const body = await res.json();
+
+    expect(res.status).toEqual(200);
+    const ids = body.data.map((d: { id: string }) => d.id);
+    expect(ids).toContain(child.id);
+    expect(ids).not.toContain(
+      (await Document.findOne({ where: { title: "Handbook sibling" } }))?.id
+    );
+  });
+});
+
+describe("#documents.move validation (integration)", () => {
+  it("should require a collection or parent document", async () => {
+    const team = await buildTeam();
+    const user = await buildUser({ teamId: team.id });
+    const collection = await buildCollection({
+      teamId: team.id,
+      userId: user.id,
+    });
+    const document = await buildDocument({
+      teamId: team.id,
+      userId: user.id,
+      collectionId: collection.id,
+    });
+
+    const res = await server.post("/api/documents.move", user, {
+      body: { id: document.id },
+    });
+    const body = await res.json();
+
+    expect(res.status).toEqual(400);
+    expect(body.message).toEqual("collectionId is required to move a document");
+    const after = await Document.findByPk(document.id, { rejectOnEmpty: true });
+    expect(after.collectionId).toEqual(collection.id);
+  });
+});
+
+describe("#documents.delete reason (integration)", () => {
+  async function setup(deprecatedReason: string | null = null) {
+    const team = await buildTeam();
+    const user = await buildUser({ teamId: team.id });
+    const collection = await buildCollection({
+      teamId: team.id,
+      userId: user.id,
+    });
+    const document = await buildDocument({
+      teamId: team.id,
+      userId: user.id,
+      collectionId: collection.id,
+      deprecatedReason,
+    });
+    return { user, document };
+  }
+
+  const reload = (id: string) =>
+    Document.unscoped().findByPk(id, { paranoid: false, rejectOnEmpty: true });
+
+  it("should store a trimmed reason when deleting", async () => {
+    const { user, document } = await setup();
+
+    const res = await server.post("/api/documents.delete", user, {
+      body: { id: document.id, reason: "  Obsolete  " },
+    });
+    expect(res.status).toEqual(200);
+
+    const deleted = await reload(document.id);
+    expect(deleted.deletedAt).not.toBeNull();
+    expect(deleted.deprecatedReason).toEqual("Obsolete");
+  });
+
+  it("should clear the reason when an empty one is sent", async () => {
+    const { user, document } = await setup("Old reason");
+
+    const res = await server.post("/api/documents.delete", user, {
+      body: { id: document.id, reason: "" },
+    });
+    expect(res.status).toEqual(200);
+    expect((await reload(document.id)).deprecatedReason).toBeNull();
+  });
+
+  it("should keep the existing reason when none is sent", async () => {
+    const { user, document } = await setup("Keep me");
+
+    const res = await server.post("/api/documents.delete", user, {
+      body: { id: document.id },
+    });
+    expect(res.status).toEqual(200);
+    expect((await reload(document.id)).deprecatedReason).toEqual("Keep me");
+  });
+});
+
+describe("#documents.unpublish (integration)", () => {
+  it("should unpublish a document and remove it from the collection structure", async () => {
+    const team = await buildTeam();
+    const user = await buildUser({ teamId: team.id });
+    const collection = await buildCollection({
+      teamId: team.id,
+      userId: user.id,
+    });
+    const document = await buildDocument({
+      teamId: team.id,
+      userId: user.id,
+      collectionId: collection.id,
+    });
+
+    const res = await server.post("/api/documents.unpublish", user, {
+      body: { id: document.id },
+    });
+    const body = await res.json();
+
+    expect(res.status).toEqual(200);
+    expect(body.data.id).toEqual(document.id);
+    expect(body.data.publishedAt).toBeNull();
+    expect(body.policies).toHaveLength(1);
+    expect(body.policies[0].id).toEqual(document.id);
+
+    const after = await Document.findByPk(document.id, { rejectOnEmpty: true });
+    expect(after.publishedAt).toBeNull();
+    const reloaded = await Collection.findByPk(collection.id, {
+      includeDocumentStructure: true,
+      rejectOnEmpty: true,
+    });
+    expect(JSON.stringify(reloaded.documentStructure)).not.toContain(
+      document.id
+    );
+  });
+
+  it("should refuse to unpublish a document that has children", async () => {
+    const team = await buildTeam();
+    const user = await buildUser({ teamId: team.id });
+    const collection = await buildCollection({
+      teamId: team.id,
+      userId: user.id,
+    });
+    const parent = await buildDocument({
+      teamId: team.id,
+      userId: user.id,
+      collectionId: collection.id,
+    });
+    await buildDocument({
+      teamId: team.id,
+      userId: user.id,
+      collectionId: collection.id,
+      parentDocumentId: parent.id,
+    });
+
+    const res = await server.post("/api/documents.unpublish", user, {
+      body: { id: parent.id },
+    });
+    expect(res.status).toEqual(400);
+    const after = await Document.findByPk(parent.id, { rejectOnEmpty: true });
+    expect(after.publishedAt).not.toBeNull();
+  });
+
+  it("should deny a viewer from unpublishing", async () => {
+    const team = await buildTeam();
+    const owner = await buildUser({ teamId: team.id });
+    const viewer = await buildViewer({ teamId: team.id });
+    const collection = await buildCollection({
+      teamId: team.id,
+      userId: owner.id,
+    });
+    const document = await buildDocument({
+      teamId: team.id,
+      userId: owner.id,
+      collectionId: collection.id,
+    });
+
+    const res = await server.post("/api/documents.unpublish", viewer, {
+      body: { id: document.id },
+    });
+    expect(res.status).toEqual(403);
+    const after = await Document.findByPk(document.id, { rejectOnEmpty: true });
+    expect(after.publishedAt).not.toBeNull();
+  });
+});
+
+describe("#documents.import validation (integration)", () => {
+  it("should require a file or attachmentId", async () => {
+    const team = await buildTeam();
+    const user = await buildUser({ teamId: team.id });
+    const collection = await buildCollection({
+      teamId: team.id,
+      userId: user.id,
+    });
+
+    const res = await server.post("/api/documents.import", user, {
+      body: { collectionId: collection.id },
+    });
+    const body = await res.json();
+
+    expect(res.status).toEqual(400);
+    expect(body.message).toEqual("one of attachmentId or file is required");
+  });
+
+  it("should accept an attachmentId without a file", async () => {
+    const team = await buildTeam();
+    const user = await buildUser({ teamId: team.id });
+    const collection = await buildCollection({
+      teamId: team.id,
+      userId: user.id,
+    });
+
+    const res = await server.post("/api/documents.import", user, {
+      body: {
+        collectionId: collection.id,
+        attachmentId: "7c4f2a8e-6b1d-4f3a-9c5e-1a2b3c4d5e6f",
+      },
+    });
+    const body = await res.json();
+
+    expect(body.message).not.toEqual("one of attachmentId or file is required");
+    expect(res.status).not.toEqual(200);
+  });
+});
+
+describe("#documents.create from template (integration)", () => {
+  it("should create a document from a readable template", async () => {
+    const team = await buildTeam();
+    const user = await buildUser({ teamId: team.id });
+    const collection = await buildCollection({
+      teamId: team.id,
+      userId: user.id,
+    });
+    const template = await buildTemplate({
+      teamId: team.id,
+      userId: user.id,
+      collectionId: collection.id,
+      title: "Meeting notes template",
+      text: "Agenda items",
+    });
+
+    const res = await server.post("/api/documents.create", user, {
+      body: {
+        templateId: template.id,
+        collectionId: collection.id,
+        publish: true,
+      },
+    });
+    const body = await res.json();
+
+    expect(res.status).toEqual(200);
+    expect(body.data.title).toEqual("Meeting notes template");
+    expect(body.data.text).toContain("Agenda items");
+    const created = await Document.findByPk(body.data.id, {
+      rejectOnEmpty: true,
+    });
+    expect(created.templateId).toEqual(template.id);
+  });
+
+  it("should not create from another team's template", async () => {
+    const team = await buildTeam();
+    const user = await buildUser({ teamId: team.id });
+    const collection = await buildCollection({
+      teamId: team.id,
+      userId: user.id,
+    });
+    const foreign = await buildTemplate({ text: "Foreign secret" });
+
+    const res = await server.post("/api/documents.create", user, {
+      body: {
+        templateId: foreign.id,
+        collectionId: collection.id,
+        publish: true,
+      },
+    });
+
+    expect([403, 404]).toContain(res.status);
+    expect(JSON.stringify(await res.json())).not.toContain("Foreign secret");
+    expect(
+      await Document.count({ where: { collectionId: collection.id } })
+    ).toEqual(0);
+  });
+});
+
+describe("#documents.add_user validation (integration)", () => {
+  it("should not let a user invite themselves", async () => {
+    const team = await buildTeam();
+    const user = await buildUser({ teamId: team.id });
+    const collection = await buildCollection({
+      teamId: team.id,
+      userId: user.id,
+    });
+    const document = await buildDocument({
+      teamId: team.id,
+      userId: user.id,
+      collectionId: collection.id,
+    });
+
+    const res = await server.post("/api/documents.add_user", user, {
+      body: { id: document.id, userId: user.id },
+    });
+    const body = await res.json();
+
+    expect(res.status).toEqual(400);
+    expect(body.message).toEqual("You cannot invite yourself");
   });
 });
