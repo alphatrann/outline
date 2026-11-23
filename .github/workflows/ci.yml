@@ -27,6 +27,7 @@ jobs:
       code: ${{ steps.filter.outputs.code }}
       config: ${{ steps.filter.outputs.config }}
       server: ${{ steps.filter.outputs.server }}
+      integration: ${{ steps.filter.outputs.integration }}
       app: ${{ steps.filter.outputs.app }}
       deps: ${{ steps.filter.outputs.deps }}
     steps:
@@ -51,6 +52,22 @@ jobs:
               - 'plugins/**'
               - 'package.json'
               - 'yarn.lock'
+            # Integration tests run against real Postgres/Redis and are slow, so
+            # only run them when source they exercise changes. Unit-test-only
+            # edits are skipped via extglob (paths-filter v2 can't negate).
+            integration:
+              - 'server/**/!(*.test).{ts,tsx,js,json,html,sql}'
+              - 'server/**/*.integration.test.ts'
+              - 'server/test/**'
+              - 'shared/**/!(*.test).{ts,tsx,js,json}'
+              - 'plugins/**/!(*.test).{ts,tsx,js,json}'
+              - 'package.json'
+              - 'yarn.lock'
+              - 'vitest.config.ts'
+              - 'vitest.integration.config.ts'
+              - 'tsconfig.json'
+              - '.github/workflows/ci.yml'
+              - '.github/actions/install/**'
             app:
               - 'app/**'
               - 'shared/**'
@@ -137,7 +154,7 @@ jobs:
 
   test-integration:
     needs: changes
-    if: ${{ needs.changes.outputs.server == 'true' || needs.changes.outputs.config == 'true' }}
+    if: ${{ needs.changes.outputs.integration == 'true' }}
     runs-on: ${{ needs.changes.outputs.runner }}
     steps:
       - uses: actions/checkout@v5
