@@ -1,11 +1,13 @@
 import {
   buildAdmin,
   buildDraftDocument,
+  buildPin,
   buildViewer,
   buildCollection,
   buildDocument,
   buildShare,
   buildTeam,
+  buildTemplate,
   buildUser,
 } from "@server/test/factories";
 import { cleanBetweenTests } from "@server/test/cleanup";
@@ -17,7 +19,14 @@ import {
   TeamPreference,
 } from "@shared/types";
 import type { NavigationNode } from "@shared/types";
-import { Collection, Document } from "@server/models";
+import {
+  Collection,
+  Document,
+  Event,
+  Pin,
+  Revision,
+  UserMembership,
+} from "@server/models";
 
 const server = getTestServer();
 cleanBetweenTests();
@@ -841,5 +850,1123 @@ describe("document policy decisions (integration)", () => {
     // Disabled for one collection: rejected by the "comment" policy.
     await collection.update({ commenting: false });
     expect((await comment()).status).toEqual(403);
+  });
+});
+
+describe("#documents.search_titles (integration)", () => {
+  async function setup() {
+    const team = await buildTeam();
+    const user = await buildUser({ teamId: team.id });
+    const collection = await buildCollection({
+      teamId: team.id,
+      userId: user.id,
+    });
+    return { team, user, collection };
+  }
+
+  it("should match documents by title and paginate", async () => {
+    const { team, user, collection } = await setup();
+    const match = await buildDocument({
+      teamId: team.id,
+      userId: user.id,
+      collectionId: collection.id,
+      title: "Quarterly roadmap",
+    });
+    await buildDocument({
+      teamId: team.id,
+      userId: user.id,
+      collectionId: collection.id,
+      title: "Unrelated note",
+    });
+
+    const res = await server.post("/api/documents.search_titles", user, {
+      body: { query: "roadmap" },
+    });
+    const body = await res.json();
+
+    expect(res.status).toEqual(200);
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0].id).toEqual(match.id);
+    expect(body.pagination.limit).toBeDefined();
+    expect(body.policies).toHaveLength(1);
+    expect(body.policies[0].id).toEqual(match.id);
+  });
+
+  it("should scope results with the collectionId filter", async () => {
+    const { team, user, collection } = await setup();
+    const other = await buildCollection({ teamId: team.id, userId: user.id });
+    const inScope = await buildDocument({
+      teamId: team.id,
+      userId: user.id,
+      collectionId: collection.id,
+      title: "Planning in scope",
+    });
+    await buildDocument({
+      teamId: team.id,
+      userId: user.id,
+      collectionId: other.id,
+      title: "Planning out of scope",
+    });
+
+    const res = await server.post("/api/documents.search_titles", user, {
+      body: { query: "planning", collectionId: collection.id },
+    });
+    const body = await res.json();
+
+    expect(res.status).toEqual(200);
+    expect(body.data.map((d: { id: string }) => d.id)).toEqual([inScope.id]);
+  });
+
+  it("should not search a collection the user cannot read", async () => {
+    const { team, user } = await setup();
+    const owner = await buildUser({ teamId: team.id });
+    const privateCollection = await buildCollection({
+      teamId: team.id,
+      userId: owner.id,
+      permission: null,
+    });
+    await buildDocument({
+      teamId: team.id,
+      userId: owner.id,
+      collectionId: privateCollection.id,
+      title: "Confidential planning",
+    });
+
+    const res = await server.post("/api/documents.search_titles", user, {
+      body: { query: "planning", collectionId: privateCollection.id },
+    });
+
+    expect(res.status).toEqual(403);
+    expect(JSON.stringify(await res.json())).not.toContain(
+      "Confidential planning"
+    );
+  });
+
+  it("should expand a documentId filter to the document's descendants", async () => {
+    const { team, user, collection } = await setup();
+    const parent = await buildDocument({
+      teamId: team.id,
+      userId: user.id,
+      collectionId: collection.id,
+      title: "Handbook parent",
+    });
+    const child = await buildDocument({
+      teamId: team.id,
+      userId: user.id,
+      collectionId: collection.id,
+      parentDocumentId: parent.id,
+      title: "Handbook child",
+    });
+    await buildDocument({
+      teamId: team.id,
+      userId: user.id,
+      collectionId: collection.id,
+      title: "Handbook sibling",
+    });
+
+    const res = await server.post("/api/documents.search_titles", user, {
+      body: { query: "handbook", documentId: parent.id },
+    });
+    const body = await res.json();
+
+    expect(res.status).toEqual(200);
+    const ids = body.data.map((d: { id: string }) => d.id);
+    expect(ids).toContain(child.id);
+    expect(ids).not.toContain(
+      (await Document.findOne({ where: { title: "Handbook sibling" } }))?.id
+    );
+  });
+});
+
+describe("#documents.move validation (integration)", () => {
+  it("should require a collection or parent document", async () => {
+    const team = await buildTeam();
+    const user = await buildUser({ teamId: team.id });
+    const collection = await buildCollection({
+      teamId: team.id,
+      userId: user.id,
+    });
+    const document = await buildDocument({
+      teamId: team.id,
+      userId: user.id,
+      collectionId: collection.id,
+    });
+
+    const res = await server.post("/api/documents.move", user, {
+      body: { id: document.id },
+    });
+    const body = await res.json();
+
+    expect(res.status).toEqual(400);
+    expect(body.message).toEqual("collectionId is required to move a document");
+    const after = await Document.findByPk(document.id, { rejectOnEmpty: true });
+    expect(after.collectionId).toEqual(collection.id);
+  });
+});
+
+describe("#documents.delete reason (integration)", () => {
+  async function setup(deprecatedReason: string | null = null) {
+    const team = await buildTeam();
+    const user = await buildUser({ teamId: team.id });
+    const collection = await buildCollection({
+      teamId: team.id,
+      userId: user.id,
+    });
+    const document = await buildDocument({
+      teamId: team.id,
+      userId: user.id,
+      collectionId: collection.id,
+      deprecatedReason,
+    });
+    return { user, document };
+  }
+
+  const reload = (id: string) =>
+    Document.unscoped().findByPk(id, { paranoid: false, rejectOnEmpty: true });
+
+  it("should store a trimmed reason when deleting", async () => {
+    const { user, document } = await setup();
+
+    const res = await server.post("/api/documents.delete", user, {
+      body: { id: document.id, reason: "  Obsolete  " },
+    });
+    expect(res.status).toEqual(200);
+
+    const deleted = await reload(document.id);
+    expect(deleted.deletedAt).not.toBeNull();
+    expect(deleted.deprecatedReason).toEqual("Obsolete");
+  });
+
+  it("should clear the reason when an empty one is sent", async () => {
+    const { user, document } = await setup("Old reason");
+
+    const res = await server.post("/api/documents.delete", user, {
+      body: { id: document.id, reason: "" },
+    });
+    expect(res.status).toEqual(200);
+    expect((await reload(document.id)).deprecatedReason).toBeNull();
+  });
+
+  it("should keep the existing reason when none is sent", async () => {
+    const { user, document } = await setup("Keep me");
+
+    const res = await server.post("/api/documents.delete", user, {
+      body: { id: document.id },
+    });
+    expect(res.status).toEqual(200);
+    expect((await reload(document.id)).deprecatedReason).toEqual("Keep me");
+  });
+});
+
+describe("#documents.unpublish (integration)", () => {
+  it("should unpublish a document and remove it from the collection structure", async () => {
+    const team = await buildTeam();
+    const user = await buildUser({ teamId: team.id });
+    const collection = await buildCollection({
+      teamId: team.id,
+      userId: user.id,
+    });
+    const document = await buildDocument({
+      teamId: team.id,
+      userId: user.id,
+      collectionId: collection.id,
+    });
+
+    const res = await server.post("/api/documents.unpublish", user, {
+      body: { id: document.id },
+    });
+    const body = await res.json();
+
+    expect(res.status).toEqual(200);
+    expect(body.data.id).toEqual(document.id);
+    expect(body.data.publishedAt).toBeNull();
+    expect(body.policies).toHaveLength(1);
+    expect(body.policies[0].id).toEqual(document.id);
+
+    const after = await Document.findByPk(document.id, { rejectOnEmpty: true });
+    expect(after.publishedAt).toBeNull();
+    const reloaded = await Collection.findByPk(collection.id, {
+      includeDocumentStructure: true,
+      rejectOnEmpty: true,
+    });
+    expect(JSON.stringify(reloaded.documentStructure)).not.toContain(
+      document.id
+    );
+  });
+
+  it("should detach the document from its collection when asked", async () => {
+    const team = await buildTeam();
+    const user = await buildUser({ teamId: team.id });
+    const collection = await buildCollection({
+      teamId: team.id,
+      userId: user.id,
+    });
+    const kept = await buildDocument({
+      teamId: team.id,
+      userId: user.id,
+      collectionId: collection.id,
+    });
+    const detached = await buildDocument({
+      teamId: team.id,
+      userId: user.id,
+      collectionId: collection.id,
+    });
+
+    const keptRes = await server.post("/api/documents.unpublish", user, {
+      body: { id: kept.id },
+    });
+    expect(keptRes.status).toEqual(200);
+    const detachedRes = await server.post("/api/documents.unpublish", user, {
+      body: { id: detached.id, detach: true },
+    });
+    expect(detachedRes.status).toEqual(200);
+
+    const keptAfter = await Document.findByPk(kept.id, {
+      rejectOnEmpty: true,
+    });
+    const detachedAfter = await Document.findByPk(detached.id, {
+      rejectOnEmpty: true,
+    });
+    expect(keptAfter.collectionId).toEqual(collection.id);
+    expect(detachedAfter.collectionId).toBeNull();
+  });
+
+  it("should refuse to unpublish a document that has children", async () => {
+    const team = await buildTeam();
+    const user = await buildUser({ teamId: team.id });
+    const collection = await buildCollection({
+      teamId: team.id,
+      userId: user.id,
+    });
+    const parent = await buildDocument({
+      teamId: team.id,
+      userId: user.id,
+      collectionId: collection.id,
+    });
+    await buildDocument({
+      teamId: team.id,
+      userId: user.id,
+      collectionId: collection.id,
+      parentDocumentId: parent.id,
+    });
+
+    const res = await server.post("/api/documents.unpublish", user, {
+      body: { id: parent.id },
+    });
+    expect(res.status).toEqual(400);
+    const after = await Document.findByPk(parent.id, { rejectOnEmpty: true });
+    expect(after.publishedAt).not.toBeNull();
+  });
+
+  it("should deny a viewer from unpublishing", async () => {
+    const team = await buildTeam();
+    const owner = await buildUser({ teamId: team.id });
+    const viewer = await buildViewer({ teamId: team.id });
+    const collection = await buildCollection({
+      teamId: team.id,
+      userId: owner.id,
+    });
+    const document = await buildDocument({
+      teamId: team.id,
+      userId: owner.id,
+      collectionId: collection.id,
+    });
+
+    const res = await server.post("/api/documents.unpublish", viewer, {
+      body: { id: document.id },
+    });
+    expect(res.status).toEqual(403);
+    const after = await Document.findByPk(document.id, { rejectOnEmpty: true });
+    expect(after.publishedAt).not.toBeNull();
+  });
+});
+
+describe("#documents.import validation (integration)", () => {
+  it("should require a file or attachmentId", async () => {
+    const team = await buildTeam();
+    const user = await buildUser({ teamId: team.id });
+    const collection = await buildCollection({
+      teamId: team.id,
+      userId: user.id,
+    });
+
+    const res = await server.post("/api/documents.import", user, {
+      body: { collectionId: collection.id },
+    });
+    const body = await res.json();
+
+    expect(res.status).toEqual(400);
+    expect(body.message).toEqual("one of attachmentId or file is required");
+  });
+
+  it("should accept an attachmentId without a file", async () => {
+    const team = await buildTeam();
+    const user = await buildUser({ teamId: team.id });
+    const collection = await buildCollection({
+      teamId: team.id,
+      userId: user.id,
+    });
+
+    const res = await server.post("/api/documents.import", user, {
+      body: {
+        collectionId: collection.id,
+        attachmentId: "7c4f2a8e-6b1d-4f3a-9c5e-1a2b3c4d5e6f",
+      },
+    });
+    const body = await res.json();
+
+    expect(body.message).not.toEqual("one of attachmentId or file is required");
+    expect(res.status).not.toEqual(200);
+  });
+});
+
+describe("#documents.create from template (integration)", () => {
+  it("should create a document from a readable template", async () => {
+    const team = await buildTeam();
+    const user = await buildUser({ teamId: team.id });
+    const collection = await buildCollection({
+      teamId: team.id,
+      userId: user.id,
+    });
+    const template = await buildTemplate({
+      teamId: team.id,
+      userId: user.id,
+      collectionId: collection.id,
+      title: "Meeting notes template",
+      text: "Agenda items",
+    });
+
+    const res = await server.post("/api/documents.create", user, {
+      body: {
+        templateId: template.id,
+        collectionId: collection.id,
+        publish: true,
+      },
+    });
+    const body = await res.json();
+
+    expect(res.status).toEqual(200);
+    expect(body.data.title).toEqual("Meeting notes template");
+    expect(body.data.text).toContain("Agenda items");
+    const created = await Document.findByPk(body.data.id, {
+      rejectOnEmpty: true,
+    });
+    expect(created.templateId).toEqual(template.id);
+  });
+
+  it("should create from a template in a private collection the user is a member of", async () => {
+    const team = await buildTeam();
+    const admin = await buildAdmin({ teamId: team.id });
+    const user = await buildUser({ teamId: team.id });
+    const privateCollection = await buildCollection({
+      teamId: team.id,
+      userId: admin.id,
+      permission: null,
+    });
+    await UserMembership.create({
+      collectionId: privateCollection.id,
+      userId: user.id,
+      permission: CollectionPermission.Read,
+      createdById: admin.id,
+    });
+    const target = await buildCollection({ teamId: team.id, userId: user.id });
+    const template = await buildTemplate({
+      teamId: team.id,
+      userId: admin.id,
+      collectionId: privateCollection.id,
+      title: "Private template",
+      text: "Members only",
+    });
+
+    const res = await server.post("/api/documents.create", user, {
+      body: { templateId: template.id, collectionId: target.id, publish: true },
+    });
+
+    expect(res.status).toEqual(200);
+    expect((await res.json()).data.title).toEqual("Private template");
+  });
+
+  it("should not create from another team's template", async () => {
+    const team = await buildTeam();
+    const user = await buildUser({ teamId: team.id });
+    const collection = await buildCollection({
+      teamId: team.id,
+      userId: user.id,
+    });
+    const foreign = await buildTemplate({ text: "Foreign secret" });
+
+    const res = await server.post("/api/documents.create", user, {
+      body: {
+        templateId: foreign.id,
+        collectionId: collection.id,
+        publish: true,
+      },
+    });
+
+    expect([403, 404]).toContain(res.status);
+    expect(JSON.stringify(await res.json())).not.toContain("Foreign secret");
+    expect(
+      await Document.count({ where: { collectionId: collection.id } })
+    ).toEqual(0);
+  });
+});
+
+describe("#documents.add_user validation (integration)", () => {
+  it("should not let a user invite themselves", async () => {
+    const team = await buildTeam();
+    const user = await buildUser({ teamId: team.id });
+    const collection = await buildCollection({
+      teamId: team.id,
+      userId: user.id,
+    });
+    const document = await buildDocument({
+      teamId: team.id,
+      userId: user.id,
+      collectionId: collection.id,
+    });
+
+    const res = await server.post("/api/documents.add_user", user, {
+      body: { id: document.id, userId: user.id },
+    });
+    const body = await res.json();
+
+    expect(res.status).toEqual(400);
+    expect(body.message).toEqual("You cannot invite yourself");
+  });
+});
+
+describe("#documents response and edge details (integration)", () => {
+  async function setup() {
+    const team = await buildTeam();
+    const user = await buildUser({ teamId: team.id });
+    const collection = await buildCollection({
+      teamId: team.id,
+      userId: user.id,
+    });
+    const document = await buildDocument({
+      teamId: team.id,
+      userId: user.id,
+      collectionId: collection.id,
+    });
+    return { team, user, collection, document };
+  }
+
+  it("should not let a viewer restore a document", async () => {
+    const { team, collection, document } = await setup();
+    const viewer = await buildViewer({ teamId: team.id });
+    await collection.update({ permission: CollectionPermission.Read });
+    await document.destroy();
+
+    const res = await server.post("/api/documents.restore", viewer, {
+      body: { id: document.id },
+    });
+
+    expect(res.status).toEqual(403);
+  });
+
+  it("should return policies when restoring a document", async () => {
+    const { user, document } = await setup();
+    await document.destroy();
+
+    const body = await (
+      await server.post("/api/documents.restore", user, {
+        body: { id: document.id },
+      })
+    ).json();
+
+    expect(body.data.id).toEqual(document.id);
+    expect(body.policies).toHaveLength(1);
+    expect(body.policies[0].id).toEqual(document.id);
+  });
+
+  it("should refuse to move a document inside a draft", async () => {
+    const { team, user, collection, document } = await setup();
+    const draft = await buildDraftDocument({
+      teamId: team.id,
+      userId: user.id,
+      collectionId: collection.id,
+    });
+
+    const res = await server.post("/api/documents.move", user, {
+      body: { id: document.id, parentDocumentId: draft.id },
+    });
+    const body = await res.json();
+
+    expect(res.status).toEqual(400);
+    expect(body.message).toEqual("Cannot move document inside a draft");
+  });
+
+  it("should deny moving into a collection the user can only read", async () => {
+    const { team, user, document } = await setup();
+    const owner = await buildAdmin({ teamId: team.id });
+    const readOnly = await buildCollection({
+      teamId: team.id,
+      userId: owner.id,
+      permission: CollectionPermission.Read,
+    });
+
+    const res = await server.post("/api/documents.move", user, {
+      body: { id: document.id, collectionId: readOnly.id },
+    });
+
+    expect(res.status).toEqual(403);
+    const after = await Document.findByPk(document.id, { rejectOnEmpty: true });
+    expect(after.collectionId).not.toEqual(readOnly.id);
+  });
+
+  it("should move into a private collection the user can write via membership", async () => {
+    const { team, user, document } = await setup();
+    const owner = await buildAdmin({ teamId: team.id });
+    const target = await buildCollection({
+      teamId: team.id,
+      userId: owner.id,
+      permission: null,
+    });
+    await UserMembership.create({
+      collectionId: target.id,
+      userId: user.id,
+      permission: CollectionPermission.ReadWrite,
+      createdById: owner.id,
+    });
+
+    const res = await server.post("/api/documents.move", user, {
+      body: { id: document.id, collectionId: target.id },
+    });
+    const body = await res.json();
+
+    expect(res.status).toEqual(200);
+    expect(body.data.collections).toEqual([]);
+    expect(body.data.documents.length).toBeGreaterThan(0);
+    // Policies are included only when the collection changed.
+    expect(body.policies.length).toBeGreaterThan(0);
+  });
+
+  it("should omit policies when a move keeps the collection", async () => {
+    const { team, user, collection, document } = await setup();
+    const sibling = await buildDocument({
+      teamId: team.id,
+      userId: user.id,
+      collectionId: collection.id,
+    });
+
+    const body = await (
+      await server.post("/api/documents.move", user, {
+        body: { id: document.id, collectionId: collection.id, index: 1 },
+      })
+    ).json();
+
+    expect(sibling.id).toBeDefined();
+    expect(body.policies).toEqual([]);
+    expect(body.data.collections).toEqual([]);
+  });
+
+  it("should store and return a reason when archiving", async () => {
+    const { user, document } = await setup();
+
+    const body = await (
+      await server.post("/api/documents.archive", user, {
+        body: { id: document.id, reason: "  Superseded  " },
+      })
+    ).json();
+
+    expect(body.data.deprecatedReason).toEqual("Superseded");
+    expect(body.policies).toHaveLength(1);
+    await document.reload();
+    expect(document.deprecatedReason).toEqual("Superseded");
+  });
+
+  it("should keep an existing reason when archiving without one", async () => {
+    const { user, document } = await setup();
+    await document.update({ deprecatedReason: "Keep me" });
+
+    const res = await server.post("/api/documents.archive", user, {
+      body: { id: document.id },
+    });
+    expect(res.status).toEqual(200);
+    await document.reload();
+    expect(document.deprecatedReason).toEqual("Keep me");
+  });
+
+  it("should return success and record an event for a permanent delete", async () => {
+    const { team, document } = await setup();
+    const admin = await buildAdmin({ teamId: team.id });
+    await document.destroy();
+
+    const res = await server.post("/api/documents.delete", admin, {
+      body: { id: document.id, permanent: true },
+    });
+    const body = await res.json();
+
+    expect(res.status).toEqual(200);
+    expect(body.success).toEqual(true);
+    const event = await Event.findOne({
+      where: { name: "documents.permanent_delete", documentId: document.id },
+    });
+    expect(event?.data).toEqual({ title: document.title });
+  });
+
+  it("should return success for a soft delete", async () => {
+    const { user, document } = await setup();
+
+    const body = await (
+      await server.post("/api/documents.delete", user, {
+        body: { id: document.id },
+      })
+    ).json();
+
+    expect(body.success).toEqual(true);
+  });
+
+  it("should create a draft without a collection", async () => {
+    const { user } = await setup();
+
+    const res = await server.post("/api/documents.create", user, {
+      body: { title: "Loose draft" },
+    });
+    const body = await res.json();
+
+    expect(res.status).toEqual(200);
+    expect(body.data.collectionId).toBeNull();
+    expect(body.policies).toHaveLength(1);
+  });
+
+  it("should return policies when creating a document", async () => {
+    const { user, collection } = await setup();
+
+    const body = await (
+      await server.post("/api/documents.create", user, {
+        body: { title: "New one", collectionId: collection.id, publish: true },
+      })
+    ).json();
+
+    expect(body.data.collectionId).toEqual(collection.id);
+    expect(body.policies).toHaveLength(1);
+    expect(body.policies[0].id).toEqual(body.data.id);
+  });
+
+  it("should add, update and remove a document user membership", async () => {
+    const { team, user, document } = await setup();
+    const other = await buildUser({ teamId: team.id });
+
+    const added = await (
+      await server.post("/api/documents.add_user", user, {
+        body: {
+          id: document.id,
+          userId: other.id,
+          permission: DocumentPermission.Read,
+        },
+      })
+    ).json();
+    expect(added.data.users[0].id).toEqual(other.id);
+    expect(added.data.memberships[0].permission).toEqual(
+      DocumentPermission.Read
+    );
+
+    const updated = await server.post("/api/documents.add_user", user, {
+      body: {
+        id: document.id,
+        userId: other.id,
+        permission: DocumentPermission.ReadWrite,
+      },
+    });
+    expect(updated.status).toEqual(200);
+    // Re-adding without a permission leaves the existing one alone.
+    const unchanged = await server.post("/api/documents.add_user", user, {
+      body: { id: document.id, userId: other.id },
+    });
+    expect(unchanged.status).toEqual(200);
+
+    const rows = await UserMembership.findAll({
+      where: { documentId: document.id, userId: other.id },
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].permission).toEqual(DocumentPermission.ReadWrite);
+    expect(rows[0].sourceId).toBeNull();
+
+    const removed = await server.post("/api/documents.remove_user", user, {
+      body: { id: document.id, userId: other.id },
+    });
+    expect(removed.status).toEqual(200);
+    expect(
+      await Event.count({
+        where: { name: "documents.remove_user", documentId: document.id },
+      })
+    ).toEqual(1);
+  });
+});
+
+/**
+ * Pins the document mover and restorer commands through the API: the response
+ * contents, the emitted event, pins, and index handling when reordering.
+ */
+describe("document mover and restorer details (integration)", () => {
+  type Actor = Parameters<typeof server.post>[1];
+
+  const setup = async () => {
+    const team = await buildTeam();
+    const user = await buildUser({ teamId: team.id });
+    const from = await buildCollection({ teamId: team.id, userId: user.id });
+    const to = await buildCollection({ teamId: team.id, userId: user.id });
+    return { team, user, from, to };
+  };
+  const move = (user: Actor, body: Record<string, unknown>) =>
+    server.post("/api/documents.move", user, { body });
+  const topLevel = async (collectionId: string) =>
+    (await loadStructure(collectionId)).map((n) => n.id);
+
+  it("should report every moved document, the event and the policies", async () => {
+    const { user, from, to } = await setup();
+    const parent = await createPublished(user, {
+      title: "Parent",
+      collectionId: from.id,
+    });
+    const child = await createPublished(user, {
+      title: "Child",
+      collectionId: from.id,
+      parentDocumentId: parent.id,
+    });
+
+    const res = await move(user, { id: parent.id, collectionId: to.id });
+    expect(res.status).toEqual(200);
+    const body = await res.json();
+
+    expect(body.data.documents.map((d: { id: string }) => d.id)).toEqual([
+      child.id,
+      parent.id,
+    ]);
+    expect(
+      body.data.documents.map((d: { collectionId: string }) => d.collectionId)
+    ).toEqual([to.id, to.id]);
+    expect(body.data.collections).toEqual([]);
+    expect(body.policies.map((p: { id: string }) => p.id).sort()).toEqual(
+      [child.id, parent.id].sort()
+    );
+
+    const event = await Event.findOne({
+      where: { name: "documents.move", documentId: parent.id },
+      rejectOnEmpty: true,
+    });
+    expect(event.data).toEqual({
+      collectionIds: [from.id, to.id],
+      documentIds: [child.id, parent.id],
+    });
+
+    expect(await topLevel(from.id)).toEqual([]);
+    const target = await loadStructure(to.id);
+    expect(target.map((n) => n.id)).toEqual([parent.id]);
+    expect(target[0].children.map((n) => n.id)).toEqual([child.id]);
+  });
+
+  it("should report only the document and no policies when reordering", async () => {
+    const { user, from } = await setup();
+    const a = await createPublished(user, {
+      title: "A",
+      collectionId: from.id,
+    });
+    await createPublished(user, { title: "B", collectionId: from.id });
+
+    const res = await move(user, {
+      id: a.id,
+      collectionId: from.id,
+      index: 1,
+    });
+    const body = await res.json();
+    expect(body.data.documents.map((d: { id: string }) => d.id)).toEqual([
+      a.id,
+    ]);
+    expect(body.policies).toEqual([]);
+
+    const event = await Event.findOne({
+      where: { name: "documents.move", documentId: a.id },
+      rejectOnEmpty: true,
+    });
+    expect(event.data).toEqual({
+      collectionIds: [from.id],
+      documentIds: [a.id],
+    });
+  });
+
+  it("should drop only the pin of the collection the document left", async () => {
+    const { team, user, from, to } = await setup();
+    const doc = await createPublished(user, {
+      title: "Pinned",
+      collectionId: from.id,
+    });
+    await buildPin({
+      teamId: team.id,
+      createdById: user.id,
+      documentId: doc.id,
+      collectionId: from.id,
+    });
+    await buildPin({
+      teamId: team.id,
+      createdById: user.id,
+      documentId: doc.id,
+      collectionId: null,
+    });
+
+    const res = await move(user, { id: doc.id, collectionId: to.id });
+    expect(res.status).toEqual(200);
+
+    const pins = await Pin.findAll({ where: { documentId: doc.id } });
+    expect(pins.map((p) => p.collectionId)).toEqual([null]);
+  });
+
+  it("should keep a pin when the document stays in its collection", async () => {
+    const { team, user, from } = await setup();
+    const doc = await createPublished(user, {
+      title: "Pinned",
+      collectionId: from.id,
+    });
+    await createPublished(user, { title: "Other", collectionId: from.id });
+    await buildPin({
+      teamId: team.id,
+      createdById: user.id,
+      documentId: doc.id,
+      collectionId: from.id,
+    });
+
+    await move(user, { id: doc.id, collectionId: from.id, index: 1 });
+
+    expect(await Pin.count({ where: { documentId: doc.id } })).toEqual(1);
+  });
+
+  it("should move a draft without touching either collection structure", async () => {
+    const { team, user, from, to } = await setup();
+    const keep = await createPublished(user, {
+      title: "Keep",
+      collectionId: from.id,
+    });
+    const draft = await buildDraftDocument({
+      teamId: team.id,
+      userId: user.id,
+      collectionId: from.id,
+    });
+
+    const res = await move(user, { id: draft.id, collectionId: to.id });
+    expect(res.status).toEqual(200);
+
+    const row = await Document.findByPk(draft.id, { rejectOnEmpty: true });
+    expect(row.collectionId).toEqual(to.id);
+    expect(row.publishedAt).toBeNull();
+    expect(await topLevel(from.id)).toEqual([keep.id]);
+    expect(await topLevel(to.id)).toEqual([]);
+    const body = await res.json();
+    expect(body.data.documents.map((d: { id: string }) => d.id)).toEqual([
+      draft.id,
+    ]);
+  });
+
+  describe("index handling", () => {
+    const abc = async () => {
+      const ctx = await setup();
+      for (const title of ["A", "B", "C"]) {
+        await createPublished(ctx.user, {
+          title,
+          collectionId: ctx.from.id,
+        });
+      }
+      const [x, y, z] = await topLevel(ctx.from.id);
+      return { ...ctx, x, y, z };
+    };
+
+    it("should move an item up to the front", async () => {
+      const { user, from, x, y, z } = await abc();
+      await move(user, { id: z, collectionId: from.id, index: 0 });
+      expect(await topLevel(from.id)).toEqual([z, x, y]);
+    });
+
+    it("should keep the order when moving to its own slot", async () => {
+      const { user, from, x, y, z } = await abc();
+      await move(user, { id: x, collectionId: from.id, index: 0 });
+      expect(await topLevel(from.id)).toEqual([x, y, z]);
+      await move(user, { id: y, collectionId: from.id, index: 1 });
+      expect(await topLevel(from.id)).toEqual([x, y, z]);
+    });
+
+    it("should move an item past the end", async () => {
+      const { user, from, x, y, z } = await abc();
+      await move(user, { id: x, collectionId: from.id, index: 3 });
+      expect(await topLevel(from.id)).toEqual([y, z, x]);
+    });
+
+    it("should append when no index is given", async () => {
+      const { user, from, x, y, z } = await abc();
+      await move(user, { id: x, collectionId: from.id });
+      expect(await topLevel(from.id)).toEqual([y, z, x]);
+    });
+
+    it("should not compensate the index when the parent changes", async () => {
+      const { user, from, x, y, z } = await abc();
+      const parent = await createPublished(user, {
+        title: "P",
+        collectionId: from.id,
+      });
+      const c1 = await createPublished(user, {
+        title: "c1",
+        collectionId: from.id,
+        parentDocumentId: parent.id,
+      });
+      const c2 = await createPublished(user, {
+        title: "c2",
+        collectionId: from.id,
+        parentDocumentId: parent.id,
+      });
+
+      await move(user, { id: x, parentDocumentId: parent.id, index: 1 });
+
+      // New documents are inserted first, so the starting order is [c2, c1].
+      const node = (await loadStructure(from.id)).find(
+        (n) => n.id === parent.id
+      );
+      expect(node?.children.map((n) => n.id)).toEqual([c2.id, x, c1.id]);
+      expect(await topLevel(from.id)).toEqual([parent.id, y, z]);
+    });
+
+    it("should not compensate the index when the collection changes", async () => {
+      const { user, to, x } = await abc();
+      const b1 = await createPublished(user, {
+        title: "b1",
+        collectionId: to.id,
+      });
+      const b2 = await createPublished(user, {
+        title: "b2",
+        collectionId: to.id,
+      });
+
+      await move(user, { id: x, collectionId: to.id, index: 1 });
+
+      expect(await topLevel(to.id)).toEqual([b2.id, x, b1.id]);
+    });
+  });
+
+  describe("restore", () => {
+    it.each(["deleted", "archived"] as const)(
+      "should restore a %s document into another collection",
+      async (state) => {
+        const { user, from, to } = await setup();
+        const doc = await createPublished(user, {
+          title: "Wanderer",
+          collectionId: from.id,
+        });
+        if (state === "deleted") {
+          await server.post("/api/documents.delete", user, {
+            body: { id: doc.id },
+          });
+        } else {
+          await server.post("/api/documents.archive", user, {
+            body: { id: doc.id },
+          });
+        }
+
+        const res = await server.post("/api/documents.restore", user, {
+          body: { id: doc.id, collectionId: to.id },
+        });
+        expect(res.status).toEqual(200);
+
+        const row = await Document.findByPk(doc.id, { rejectOnEmpty: true });
+        expect(row.collectionId).toEqual(to.id);
+        expect(row.deletedAt).toBeNull();
+        expect(row.archivedAt).toBeNull();
+        expect(await topLevel(to.id)).toEqual([doc.id]);
+        expect(await topLevel(from.id)).toEqual([]);
+      }
+    );
+
+    it("should refuse to restore into an archived collection", async () => {
+      const { team, user, from } = await setup();
+      const archived = await buildCollection({
+        teamId: team.id,
+        userId: user.id,
+        archivedAt: new Date(),
+      });
+      const doc = await createPublished(user, {
+        title: "Stuck",
+        collectionId: from.id,
+      });
+      await server.post("/api/documents.delete", user, {
+        body: { id: doc.id },
+      });
+
+      const res = await server.post("/api/documents.restore", user, {
+        body: { id: doc.id, collectionId: archived.id },
+      });
+
+      expect(res.status).toEqual(400);
+      expect((await res.json()).message).toContain("Unable to restore");
+      expect(await Document.findByPk(doc.id)).toBeNull();
+    });
+
+    it("should restore a document to a revision", async () => {
+      const { team, user, from } = await setup();
+      const doc = await buildDocument({
+        teamId: team.id,
+        userId: user.id,
+        collectionId: from.id,
+        title: "Original title",
+        text: "original text",
+      });
+      const revision = Revision.buildFromDocument(doc);
+      await revision.save();
+      await doc.update({ title: "Changed title", text: "changed text" });
+
+      const res = await server.post("/api/documents.restore", user, {
+        body: { id: doc.id, revisionId: revision.id },
+      });
+      expect(res.status).toEqual(200);
+
+      const row = await Document.findByPk(doc.id, { rejectOnEmpty: true });
+      expect(row.title).toEqual("Original title");
+      expect(row.text).toContain("original text");
+      expect(
+        await Event.count({
+          where: { name: "documents.restore", documentId: doc.id },
+        })
+      ).toEqual(1);
+    });
+
+    it("should require a revision for a live document", async () => {
+      const { user, from } = await setup();
+      const doc = await createPublished(user, {
+        title: "Live",
+        collectionId: from.id,
+      });
+
+      const res = await server.post("/api/documents.restore", user, {
+        body: { id: doc.id },
+      });
+
+      expect(res.status).toEqual(400);
+      expect((await res.json()).message).toContain("revisionId is required");
+    });
+
+    it("should reject a revision of another document or a missing one", async () => {
+      const { team, user, from } = await setup();
+      const doc = await buildDocument({
+        teamId: team.id,
+        userId: user.id,
+        collectionId: from.id,
+      });
+      const other = await buildDocument({
+        teamId: team.id,
+        userId: user.id,
+        collectionId: from.id,
+      });
+      const foreign = Revision.buildFromDocument(other);
+      await foreign.save();
+
+      const wrong = await server.post("/api/documents.restore", user, {
+        body: { id: doc.id, revisionId: foreign.id },
+      });
+      expect(wrong.status).toEqual(403);
+
+      const missing = await server.post("/api/documents.restore", user, {
+        body: {
+          id: doc.id,
+          revisionId: "00000000-0000-4000-8000-000000000000",
+        },
+      });
+      expect(missing.status).toEqual(404);
+    });
   });
 });

@@ -26,11 +26,11 @@ export default defineConfig({
       reportsDirectory: "coverage/integration",
       // Floors just below measured values; raise them as tests are added.
       thresholds: {
-        lines: 45,
-        branches: 42,
-        "server/policies/**": { lines: 88, branches: 75 },
-        "server/commands/**": { lines: 65, branches: 58 },
-        "server/routes/**": { lines: 28, branches: 20 },
+        lines: 60,
+        branches: 58,
+        "server/policies/**": { lines: 95, branches: 92 },
+        "server/commands/**": { lines: 80, branches: 72 },
+        "server/routes/**": { lines: 50, branches: 45 },
       },
     },
   },
