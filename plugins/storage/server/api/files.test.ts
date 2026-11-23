@@ -296,7 +296,12 @@ describe("#files.get", () => {
   it("should fail with status 404 if existing file is requested with key", async () => {
     const user = await buildUser();
     const fileName = "images.docx";
-    const key = path.join("uploads", user.id, crypto.randomUUID(), fileName);
+    const key = path.posix.join(
+      "uploads",
+      user.id,
+      crypto.randomUUID(),
+      fileName
+    );
 
     ensureDirSync(
       path.dirname(path.join(env.FILE_STORAGE_LOCAL_ROOT_DIR, key))
@@ -314,7 +319,12 @@ describe("#files.get", () => {
   it("should fail with status 404 if non-existing file is requested with key", async () => {
     const user = await buildUser();
     const fileName = "images.docx";
-    const key = path.join("uploads", user.id, crypto.randomUUID(), fileName);
+    const key = path.posix.join(
+      "uploads",
+      user.id,
+      crypto.randomUUID(),
+      fileName
+    );
     const res = await server.get(`/api/files.get?key=${key}`);
     expect(res.status).toEqual(404);
   });
@@ -442,7 +452,7 @@ describe("#files.get", () => {
 
   it("should succeed with status 200 ok when avatar is requested using key", async () => {
     const user = await buildUser();
-    const key = path.join("avatars", user.id, crypto.randomUUID());
+    const key = path.posix.join("avatars", user.id, crypto.randomUUID());
     const attachment = await buildAttachment({
       key,
       teamId: user.teamId,
@@ -471,7 +481,7 @@ describe("#files.get", () => {
 
   it("should succeed with status 200 ok when avatar is requested using key", async () => {
     const user = await buildUser();
-    const key = path.join("avatars", user.id, crypto.randomUUID());
+    const key = path.posix.join("avatars", user.id, crypto.randomUUID());
     await buildAttachment({
       key,
       teamId: user.teamId,

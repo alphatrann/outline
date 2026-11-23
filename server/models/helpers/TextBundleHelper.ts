@@ -75,6 +75,6 @@ export default class TextBundleHelper {
     }
 
     used.add(candidate);
-    return path.join(this.assetsDirectory, candidate);
+    return path.posix.join(this.assetsDirectory, candidate);
   }
 }

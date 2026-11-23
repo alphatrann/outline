@@ -74,14 +74,16 @@ export function rewriteAttachmentPaths(
 
   for (const attachment of attachments) {
     const encodedPath = encodeURI(attachment.pathInZip);
-    const attachmentFileName = path.basename(attachment.pathInZip);
+    const attachmentFileName = path.posix.basename(attachment.pathInZip);
     const reference = `<<${attachment.id}>>`;
 
     const normalizedAttachmentPath = encodedPath
       .replace(new RegExp(`(.*)/${Buckets.uploads}/`), `${Buckets.uploads}/`)
       .replace(new RegExp(`(.*)/${Buckets.public}/`), `${Buckets.public}/`);
 
-    const attachmentDir = path.basename(path.dirname(attachment.pathInZip));
+    const attachmentDir = path.posix.basename(
+      path.posix.dirname(attachment.pathInZip)
+    );
     const genericNormalizedPath = `${attachmentDir}/${encodeURI(attachmentFileName)}`;
 
     text = text
@@ -91,7 +93,7 @@ export function rewriteAttachmentPaths(
         reference
       );
 
-    const segments = attachment.pathInZip.split(path.sep);
+    const segments = attachment.pathInZip.split("/");
     const attachmentsIdx = segments.findIndex(
       (seg) => seg.toLowerCase() === "attachments"
     );
@@ -133,12 +135,12 @@ export function rewriteInternalLinks(
   documentPath: string,
   docMap: Record<string, string>
 ): string {
-  const basePath = path.dirname(documentPath);
+  const basePath = path.posix.dirname(documentPath);
 
   return replaceMarkdownLinks(markdown, (href) => {
     let normalizedDocPath: string;
     try {
-      normalizedDocPath = decodeURI(path.normalize(`${basePath}/${href}`));
+      normalizedDocPath = decodeURI(path.posix.normalize(`${basePath}/${href}`));
     } catch {
       return undefined;
     }

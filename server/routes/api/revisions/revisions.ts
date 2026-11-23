@@ -215,7 +215,7 @@ router.post(
             );
             zip.addBuffer(
               await AttachmentHelper.readBuffer(attachment),
-              path.join(root, reference),
+              path.posix.join(root, reference),
               { mtime: attachment.updatedAt }
             );
 
@@ -227,12 +227,12 @@ router.post(
 
           zip.addBuffer(
             Buffer.from(TextBundleHelper.info(document, revision.id)),
-            path.join(root, TextBundleHelper.infoFileName),
+            path.posix.join(root, TextBundleHelper.infoFileName),
             { mtime: revision.updatedAt }
           );
           zip.addBuffer(
             Buffer.from(content),
-            path.join(root, TextBundleHelper.textFileName),
+            path.posix.join(root, TextBundleHelper.textFileName),
             { mtime: revision.updatedAt }
           );
         }
@@ -254,7 +254,7 @@ router.post(
 
     streamZipResponse(ctx, `${fileName}.zip`, async (zip) => {
       for (const attachment of attachments) {
-        const location = path.join(
+        const location = path.posix.join(
           "attachments",
           `${attachment.id}.${mime.extension(attachment.contentType)}`
         );

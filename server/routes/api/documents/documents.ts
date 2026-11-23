@@ -1086,7 +1086,7 @@ router.post(
               attachment.name,
               usedAssetNames
             );
-            zip.addBuffer(buffer, path.join(root, reference), {
+            zip.addBuffer(buffer, path.posix.join(root, reference), {
               mtime: attachment.updatedAt,
             });
 
@@ -1098,12 +1098,12 @@ router.post(
 
           zip.addBuffer(
             Buffer.from(TextBundleHelper.info(document)),
-            path.join(root, TextBundleHelper.infoFileName),
+            path.posix.join(root, TextBundleHelper.infoFileName),
             { mtime: document.updatedAt }
           );
           zip.addBuffer(
             Buffer.from(content),
-            path.join(root, TextBundleHelper.textFileName),
+            path.posix.join(root, TextBundleHelper.textFileName),
             { mtime: document.updatedAt }
           );
         }
@@ -1127,7 +1127,7 @@ router.post(
 
     streamZipResponse(ctx, `${fileName}.zip`, (zip) => {
       for (const { attachment, buffer } of externalAttachments) {
-        const location = path.join(
+        const location = path.posix.join(
           "attachments",
           `${attachment.id}.${mime.extension(attachment.contentType)}`
         );

@@ -105,7 +105,7 @@ export default abstract class ExportDocumentTreeTask extends ExportTask {
     // A TextBundle is a directory, so its text and assets sit inside the path
     // reserved for the document rather than beside it.
     const textPathInZip = isTextBundle
-      ? path.join(pathInZip, TextBundleHelper.textFileName)
+      ? path.posix.join(pathInZip, TextBundleHelper.textFileName)
       : pathInZip;
     const usedAssetNames = new Set<string>();
 
@@ -128,7 +128,7 @@ export default abstract class ExportDocumentTreeTask extends ExportTask {
         continue;
       }
 
-      const dir = path.dirname(pathInZip);
+      const dir = path.posix.dirname(pathInZip);
 
       // Inline small images referenced a single time as base64 data URIs
       // rather than writing an external file. PDF export renders from HTML too.
@@ -178,8 +178,8 @@ export default abstract class ExportDocumentTreeTask extends ExportTask {
         zip,
         attachment,
         isTextBundle
-          ? path.join(pathInZip, reference)
-          : path.join(dir, reference)
+          ? path.posix.join(pathInZip, reference)
+          : path.posix.join(dir, reference)
       );
 
       text = text.replace(
@@ -197,7 +197,7 @@ export default abstract class ExportDocumentTreeTask extends ExportTask {
       const matchedDocPath = pathMap.get(matchedLink);
 
       if (matchedDocPath) {
-        const relativePath = path.relative(textPathInZip, matchedDocPath);
+        const relativePath = path.posix.relative(textPathInZip, matchedDocPath);
         if (relativePath.startsWith(".")) {
           text = text.replace(
             matchedLink,
@@ -210,7 +210,7 @@ export default abstract class ExportDocumentTreeTask extends ExportTask {
     if (isTextBundle) {
       zip.addBuffer(
         Buffer.from(TextBundleHelper.info(document)),
-        path.join(pathInZip, TextBundleHelper.infoFileName),
+        path.posix.join(pathInZip, TextBundleHelper.infoFileName),
         { mtime: document.updatedAt }
       );
     }
@@ -446,13 +446,13 @@ export default abstract class ExportDocumentTreeTask extends ExportTask {
       // the same title as another document in the same collection. OKF also
       // reserves some file names, which a document may not take.
       let i = 0;
-      let filePath = path.join(root, `${title}.${extension}`);
+      let filePath = path.posix.join(root, `${title}.${extension}`);
       while (
         Array.from(map.values()).includes(filePath) ||
         (format === FileOperationFormat.OKFZip &&
-          OKFHelper.isReservedFileName(path.basename(filePath)))
+          OKFHelper.isReservedFileName(path.posix.basename(filePath)))
       ) {
-        filePath = path.join(root, `${title} (${++i}).${extension}`);
+        filePath = path.posix.join(root, `${title} (${++i}).${extension}`);
       }
 
       map.set(node.url, filePath);
@@ -465,7 +465,7 @@ export default abstract class ExportDocumentTreeTask extends ExportTask {
         this.addDocumentTreeToPathMap(
           map,
           node.children,
-          path.join(root, title),
+          path.posix.join(root, title),
           format
         );
       }
