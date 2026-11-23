@@ -672,27 +672,386 @@ mutant 174:  if (false) { return false; }     // cross-team check removed</pre>
       <code>shares.sitemap</code>, which no test used a custom domain for.
     </p>
 
+    <h3>Mutants by mutator</h3>
+    <p>
+      No <code>mutators</code> or <code>excludedMutations</code> setting is
+      configured, so every default Stryker mutator ran. Same 526 mutants,
+      matched by location.
+    </p>
+    <table>
+      <tr>
+        <th>Mutator</th>
+        <th>Mutants</th>
+        <th>Killed before</th>
+        <th>Killed now</th>
+        <th>Survived now</th>
+      </tr>
+      <tr>
+        <td>ConditionalExpression</td>
+        <td>127</td>
+        <td>36</td>
+        <td>115</td>
+        <td>12</td>
+      </tr>
+      <tr>
+        <td>ObjectLiteral</td>
+        <td>108</td>
+        <td>40</td>
+        <td>97</td>
+        <td>11</td>
+      </tr>
+      <tr>
+        <td>StringLiteral</td>
+        <td>85</td>
+        <td>49</td>
+        <td>85</td>
+        <td>0</td>
+      </tr>
+      <tr>
+        <td>BlockStatement</td>
+        <td>69</td>
+        <td>27</td>
+        <td>68</td>
+        <td>1</td>
+      </tr>
+      <tr>
+        <td>BooleanLiteral</td>
+        <td>39</td>
+        <td>8</td>
+        <td>32</td>
+        <td>7</td>
+      </tr>
+      <tr>
+        <td>ArrayDeclaration</td>
+        <td>31</td>
+        <td>10</td>
+        <td>30</td>
+        <td>1</td>
+      </tr>
+      <tr>
+        <td>LogicalOperator</td>
+        <td>23</td>
+        <td>9</td>
+        <td>22</td>
+        <td>1</td>
+      </tr>
+      <tr>
+        <td>EqualityOperator</td>
+        <td>22</td>
+        <td>4</td>
+        <td>22</td>
+        <td>0</td>
+      </tr>
+      <tr>
+        <td>CallExpression</td>
+        <td>12</td>
+        <td>7</td>
+        <td>12</td>
+        <td>0</td>
+      </tr>
+      <tr>
+        <td>OptionalChaining</td>
+        <td>7</td>
+        <td>0</td>
+        <td>7</td>
+        <td>0</td>
+      </tr>
+      <tr>
+        <td>MethodExpression</td>
+        <td>2</td>
+        <td>0</td>
+        <td>2</td>
+        <td>0</td>
+      </tr>
+      <tr>
+        <td>ArrowFunction</td>
+        <td>1</td>
+        <td>0</td>
+        <td>1</td>
+        <td>0</td>
+      </tr>
+      <tr>
+        <td><strong>Total</strong></td>
+        <td><strong>526</strong></td>
+        <td><strong>190</strong></td>
+        <td><strong>493</strong></td>
+        <td><strong>33</strong></td>
+      </tr>
+    </table>
+
     <h3>The 33 survivors</h3>
-    <ul>
-      <li>
-        <strong>Equivalent here (about 20).</strong> Dropping the
-        <code>transaction</code> option on read-only lookups, and
-        <code>rejectOnEmpty</code>, return the same rows.
-        <code>includeOAuthState</code> only matters in the OAuth flow.
-        <code>share.team</code> vs the context team and
-        <code>team.url ?? env.URL</code> resolve to the same value when not
-        cloud-hosted. <code>if (x !== undefined)</code> guards in
-        <code>collections.update</code> and <code>shares.update</code> assign
-        <code>undefined</code>, which Sequelize ignores.
-      </li>
-      <li>
-        <strong>Low value or redundant.</strong> The
-        <code>auth({ role: Member })</code> option on
-        <code>documents.restore</code> is also enforced by the document policy;
-        the index lookup in <code>documents.add_user</code> only affects
-        ordering.
-      </li>
-    </ul>
+    <p>
+      Listed from the final Stryker run. The last column is my reading of the
+      code, not proof: <em>Equivalent</em> means the mutant returns the same
+      result in these tests (dropped <code>transaction</code> or options on
+      read-only lookups, <code>rejectOnEmpty</code>, <code>undefined</code>
+      assignments Sequelize ignores, same-value fallbacks);
+      <em>Low value</em> means a test could kill it but would add little
+      (redundant checks, list ordering).
+    </p>
+    <table>
+      <tr>
+        <th>Location</th>
+        <th>Mutator</th>
+        <th>Replacement</th>
+        <th>Code</th>
+        <th>Judged</th>
+      </tr>
+      <tr>
+        <td><code>collections.ts:201</code></td>
+        <td>ObjectLiteral</td>
+        <td><code>{}</code></td>
+        <td>
+          <code
+            >const attachment = await Attachment.findByPk(attachmentId, {</code
+          >
+        </td>
+        <td>Equivalent</td>
+      </tr>
+      <tr>
+        <td><code>collections.ts:247</code></td>
+        <td>ObjectLiteral</td>
+        <td><code>{}</code></td>
+        <td><code>Group.findByPk(groupId, { transaction }),</code></td>
+        <td>Equivalent</td>
+      </tr>
+      <tr>
+        <td><code>collections.ts:156</code></td>
+        <td>BooleanLiteral</td>
+        <td><code>false</code></td>
+        <td><code>rejectOnEmpty: true,</code></td>
+        <td>Equivalent</td>
+      </tr>
+      <tr>
+        <td><code>collections.ts:301</code></td>
+        <td>ObjectLiteral</td>
+        <td><code>{}</code></td>
+        <td><code>Group.findByPk(groupId, {</code></td>
+        <td>Equivalent</td>
+      </tr>
+      <tr>
+        <td><code>collections.ts:405</code></td>
+        <td>ObjectLiteral</td>
+        <td><code>{}</code></td>
+        <td><code>User.findByPk(userId, { transaction }),</code></td>
+        <td>Equivalent</td>
+      </tr>
+      <tr>
+        <td><code>collections.ts:455</code></td>
+        <td>ObjectLiteral</td>
+        <td><code>{}</code></td>
+        <td><code>User.findByPk(userId, { transaction }),</code></td>
+        <td>Equivalent</td>
+      </tr>
+      <tr>
+        <td><code>collections.ts:695</code></td>
+        <td>ConditionalExpression</td>
+        <td><code>true</code></td>
+        <td><code>if (icon !== undefined) {</code></td>
+        <td>Equivalent</td>
+      </tr>
+      <tr>
+        <td><code>collections.ts:699</code></td>
+        <td>ConditionalExpression</td>
+        <td><code>true</code></td>
+        <td><code>if (color !== undefined) {</code></td>
+        <td>Equivalent</td>
+      </tr>
+      <tr>
+        <td><code>documents.ts:1162</code></td>
+        <td>BooleanLiteral</td>
+        <td><code>false</code></td>
+        <td><code>rejectOnEmpty: true,</code></td>
+        <td>Equivalent</td>
+      </tr>
+      <tr>
+        <td><code>documents.ts:1652</code></td>
+        <td>BooleanLiteral</td>
+        <td><code>false</code></td>
+        <td><code>rejectOnEmpty: true,</code></td>
+        <td>Equivalent</td>
+      </tr>
+      <tr>
+        <td><code>documents.ts:1887</code></td>
+        <td>ConditionalExpression</td>
+        <td><code>true</code></td>
+        <td><code>if (collection) {</code></td>
+        <td>Low value</td>
+      </tr>
+      <tr>
+        <td><code>documents.ts:1887</code></td>
+        <td>ConditionalExpression</td>
+        <td><code>false</code></td>
+        <td><code>if (collection) {</code></td>
+        <td>Low value</td>
+      </tr>
+      <tr>
+        <td><code>documents.ts:1887</code></td>
+        <td>BlockStatement</td>
+        <td><code>{}</code></td>
+        <td><code>if (collection) {</code></td>
+        <td>Low value</td>
+      </tr>
+      <tr>
+        <td><code>documents.ts:1916</code></td>
+        <td>BooleanLiteral</td>
+        <td><code>false</code></td>
+        <td><code>rejectOnEmpty: true,</code></td>
+        <td>Equivalent</td>
+      </tr>
+      <tr>
+        <td><code>documents.ts:1919</code></td>
+        <td>ObjectLiteral</td>
+        <td><code>{}</code></td>
+        <td><code>User.findByPk(userId, {</code></td>
+        <td>Equivalent</td>
+      </tr>
+      <tr>
+        <td><code>documents.ts:1920</code></td>
+        <td>BooleanLiteral</td>
+        <td><code>false</code></td>
+        <td><code>rejectOnEmpty: true,</code></td>
+        <td>Equivalent</td>
+      </tr>
+      <tr>
+        <td><code>documents.ts:1928</code></td>
+        <td>ObjectLiteral</td>
+        <td><code>{}</code></td>
+        <td>
+          <code>const UserMemberships = await UserMembership.findAll({</code>
+        </td>
+        <td>Low value</td>
+      </tr>
+      <tr>
+        <td><code>documents.ts:1929</code></td>
+        <td>ObjectLiteral</td>
+        <td><code>{}</code></td>
+        <td><code>where: {</code></td>
+        <td>Low value</td>
+      </tr>
+      <tr>
+        <td><code>documents.ts:1934</code></td>
+        <td>ArrayDeclaration</td>
+        <td><code>[]</code></td>
+        <td><code>order: [</code></td>
+        <td>Low value</td>
+      </tr>
+      <tr>
+        <td><code>documents.ts:1959</code></td>
+        <td>ConditionalExpression</td>
+        <td><code>true</code></td>
+        <td><code>if (permission) {</code></td>
+        <td>Low value</td>
+      </tr>
+      <tr>
+        <td><code>documents.ts:1151</code></td>
+        <td>ObjectLiteral</td>
+        <td><code>{}</code></td>
+        <td><code>auth({ role: UserRole.Member }),</code></td>
+        <td>Low value</td>
+      </tr>
+      <tr>
+        <td><code>shares.ts:59</code></td>
+        <td>ObjectLiteral</td>
+        <td><code>{}</code></td>
+        <td>
+          <code>const teamFromCtx = await getTeamFromContext(ctx, {</code>
+        </td>
+        <td>Equivalent</td>
+      </tr>
+      <tr>
+        <td><code>shares.ts:60</code></td>
+        <td>BooleanLiteral</td>
+        <td><code>true</code></td>
+        <td><code>includeOAuthState: false,</code></td>
+        <td>Equivalent</td>
+      </tr>
+      <tr>
+        <td><code>shares.ts:82</code></td>
+        <td>ConditionalExpression</td>
+        <td><code>false</code></td>
+        <td>
+          <code
+            >const team = teamFromCtx?.id === share.teamId ? teamFromCtx :
+            share.te</code
+          >
+        </td>
+        <td>Equivalent</td>
+      </tr>
+      <tr>
+        <td><code>shares.ts:455</code></td>
+        <td>ObjectLiteral</td>
+        <td><code>{}</code></td>
+        <td>
+          <code
+            >const team = await getTeamFromContext(ctx, { includeOAuthState:
+            false
+          </code>
+        </td>
+        <td>Equivalent</td>
+      </tr>
+      <tr>
+        <td><code>shares.ts:455</code></td>
+        <td>BooleanLiteral</td>
+        <td><code>true</code></td>
+        <td>
+          <code
+            >const team = await getTeamFromContext(ctx, { includeOAuthState:
+            false
+          </code>
+        </td>
+        <td>Equivalent</td>
+      </tr>
+      <tr>
+        <td><code>shares.ts:469</code></td>
+        <td>LogicalOperator</td>
+        <td><code>share.team.url &amp;&amp; process.env.URL</code></td>
+        <td><code>: `${share.team.url ?? process.env.URL}/s/${id}`;</code></td>
+        <td>Equivalent</td>
+      </tr>
+      <tr>
+        <td><code>shares.ts:379</code></td>
+        <td>ConditionalExpression</td>
+        <td><code>true</code></td>
+        <td><code>if (published !== undefined) {</code></td>
+        <td>Equivalent</td>
+      </tr>
+      <tr>
+        <td><code>shares.ts:390</code></td>
+        <td>ConditionalExpression</td>
+        <td><code>true</code></td>
+        <td><code>if (!isUndefined(urlId)) {</code></td>
+        <td>Equivalent</td>
+      </tr>
+      <tr>
+        <td><code>shares.ts:394</code></td>
+        <td>ConditionalExpression</td>
+        <td><code>true</code></td>
+        <td><code>if (allowIndexing !== undefined) {</code></td>
+        <td>Equivalent</td>
+      </tr>
+      <tr>
+        <td><code>shares.ts:397</code></td>
+        <td>ConditionalExpression</td>
+        <td><code>true</code></td>
+        <td><code>if (allowSubscriptions !== undefined) {</code></td>
+        <td>Equivalent</td>
+      </tr>
+      <tr>
+        <td><code>shares.ts:400</code></td>
+        <td>ConditionalExpression</td>
+        <td><code>true</code></td>
+        <td><code>if (showLastUpdated !== undefined) {</code></td>
+        <td>Equivalent</td>
+      </tr>
+      <tr>
+        <td><code>shares.ts:403</code></td>
+        <td>ConditionalExpression</td>
+        <td><code>true</code></td>
+        <td><code>if (showTOC !== undefined) {</code></td>
+        <td>Equivalent</td>
+      </tr>
+    </table>
 
     <h3>Not covered by this work</h3>
     <p>
