@@ -617,55 +617,92 @@ mutant 174:  if (false) { return false; }     // cross-team check removed</pre>
     </ul>
     <p>All pass against unmodified code, so no permission bug was found.</p>
 
-    <h2>2c. Re-run after covering the 177 route mutants</h2>
+    <h2>2c. Route mutants after the new tests</h2>
     <p>
-      Integration tests were added for the 177 route mutants with no coverage
-      (shares 26, collections 40 and documents 37 tests in total). Stryker was
-      re-run on the three route files and the same mutants compared by location.
-      The re-run mutated whole files (1,898 mutants), so its totals are not
-      comparable with 2b.
+      Integration tests were added for the 177 route mutants with no coverage,
+      then for the survivors that were left. Stryker was re-run over the same
+      line ranges as 2b and the original 526 mutants compared by location.
+      Suites now have shares 33, collections 49 and documents 52 tests.
     </p>
     <table>
       <tr>
         <th>File</th>
-        <th>Were no coverage</th>
-        <th>Now killed</th>
-        <th>Now survived</th>
-        <th>Still no coverage</th>
+        <th>Mutants</th>
+        <th>Killed</th>
+        <th>Survived</th>
+        <th>No coverage</th>
+        <th>Score (was)</th>
       </tr>
       <tr>
         <td>routes/api/collections/collections.ts</td>
-        <td>77</td>
-        <td>71</td>
-        <td>6</td>
+        <td>200</td>
+        <td>192</td>
+        <td>8</td>
         <td>0</td>
+        <td>96.00 (31.50)</td>
       </tr>
       <tr>
         <td>routes/api/documents/documents.ts</td>
-        <td>33</td>
-        <td>31</td>
-        <td>2</td>
+        <td>164</td>
+        <td>151</td>
+        <td>13</td>
         <td>0</td>
+        <td>92.07 (50.61)</td>
       </tr>
       <tr>
         <td>routes/api/shares/shares.ts</td>
-        <td>67</td>
-        <td>54</td>
+        <td>162</td>
+        <td>150</td>
         <td>12</td>
-        <td>1</td>
+        <td>0</td>
+        <td>92.59 (27.16)</td>
       </tr>
       <tr>
         <td><strong>Total</strong></td>
-        <td><strong>177</strong></td>
-        <td><strong>156</strong></td>
-        <td><strong>20</strong></td>
-        <td><strong>1</strong></td>
+        <td><strong>526</strong></td>
+        <td><strong>493</strong></td>
+        <td><strong>33</strong></td>
+        <td><strong>0</strong></td>
+        <td><strong>93.73</strong> (36.12)</td>
       </tr>
     </table>
     <p>
-      Of the 159 mutants that survived in 2b, 87 are now killed and 72 still
-      survive. Whole-file result: 615 killed, 415 survived, 868 no coverage
-      (32.4%); the handlers not listed in 2b were never tested.
+      The 177 mutants that had no coverage: 169 killed, 8 survive. The one that
+      stayed uncovered after the first round was the custom-domain branch of
+      <code>shares.sitemap</code>, which no test used a custom domain for.
+    </p>
+
+    <h3>The 33 survivors</h3>
+    <ul>
+      <li>
+        <strong>Equivalent here (about 20).</strong> Dropping the
+        <code>transaction</code> option on read-only lookups, and
+        <code>rejectOnEmpty</code>, return the same rows.
+        <code>includeOAuthState</code> only matters in the OAuth flow.
+        <code>share.team</code> vs the context team and
+        <code>team.url ?? env.URL</code> resolve to the same value when not
+        cloud-hosted. <code>if (x !== undefined)</code> guards in
+        <code>collections.update</code> and <code>shares.update</code> assign
+        <code>undefined</code>, which Sequelize ignores.
+      </li>
+      <li>
+        <strong>Low value or redundant.</strong> The
+        <code>auth({ role: Member })</code> option on
+        <code>documents.restore</code> is also enforced by the document policy;
+        the index lookup in <code>documents.add_user</code> only affects
+        ordering.
+      </li>
+    </ul>
+
+    <h3>Not covered by this work</h3>
+    <p>
+      The same line ranges also contain handlers the original run never mutated.
+      A whole-range run (898 mutants) shows 182 with no coverage and 59 more
+      survivors there: <code>collections.export</code> and
+      <code>export_all</code>, <code>documents.templatize</code>,
+      <code>duplicate</code>, the public (<code>shareId</code>) branch of
+      <code>documents.search</code>, the file branch of
+      <code>documents.import</code>, and <code>shares.list</code>.
     </p>
 
     <h2>Remaining gaps</h2>
@@ -677,8 +714,7 @@ mutant 174:  if (false) { return false; }     // cross-team check removed</pre>
         gate CI.
       </li>
       <li>
-        Route handlers outside 2b (868 mutants with no coverage across the three
-        files) have no integration tests.
+        Write tests for the handlers listed under "Not covered by this work".
       </li>
     </ul>
 
