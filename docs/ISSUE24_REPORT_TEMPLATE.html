@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Issue #24 · Clean-Machine Run Report (TEMPLATE)</title>
+    <style>
+      body {
+        font:
+          16px/1.55 system-ui,
+          -apple-system,
+          "Segoe UI",
+          sans-serif;
+        color: #1f2328;
+        max-width: 900px;
+        margin: 2rem auto;
+        padding: 0 1rem;
+      }
+      h1 {
+        font-size: 1.8rem;
+        margin: 0 0 0.25rem;
+      }
+      h2 {
+        font-size: 1.25rem;
+        margin: 2rem 0 0.4rem;
+        border-bottom: 1px solid #d0d7de;
+        padding-bottom: 0.3rem;
+      }
+      code,
+      pre {
+        background: #f6f8fa;
+        border-radius: 6px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      code {
+        padding: 0.12em 0.35em;
+        font-size: 0.9em;
+      }
+      pre {
+        padding: 0.9rem 1rem;
+        overflow-x: auto;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        font-size: 0.93rem;
+      }
+      th,
+      td {
+        border: 1px solid #d0d7de;
+        padding: 0.4rem 0.65rem;
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        background: #f6f8fa;
+        width: 28%;
+      }
+      thead th {
+        width: auto;
+      }
+      .meta {
+        color: #57606a;
+      }
+      .note {
+        background: #fff8c5;
+        border-left: 4px solid #d4a72c;
+        padding: 0.6rem 0.9rem;
+        border-radius: 4px;
+      }
+      .ok {
+        color: #1a7f37;
+        font-weight: 600;
+      }
+      .bad {
+        color: #cf222e;
+        font-weight: 600;
+      }
+      .fill {
+        color: #8250df;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Issue #24 · Clean-Machine Run Report</h1>
+    <p class="meta">
+      Deliverable H · Owner <span class="fill">[name]</span> · Date
+      <span class="fill">[YYYY-MM-DD]</span> · Commit
+      <span class="fill">[short SHA]</span>
+    </p>
+
+    <p class="note">
+      <strong>How to fill this in:</strong> replace every purple
+      <span class="fill">[field]</span>, delete rows that do not apply, and keep
+      the section order. Follow only the README, with no extra steps. Report
+      the integration suite only (K16); unit tests are out of scope. Keep the
+      whole report to one screen per section.
+    </p>
+
+    <h2>1. Verdict</h2>
+    <p>
+      <span class="ok">[Ready]</span> /
+      <span class="bad">[Not ready]</span> —
+      <span class="fill">[one sentence: can a new person run the suite from the README alone?]</span>
+    </p>
+
+    <h2>2. Environment</h2>
+    <table>
+      <tr><th>OS</th><td class="fill">[e.g. Windows 11 / macOS 15 / Ubuntu 24.04]</td></tr>
+      <tr><th>Node / Yarn</th><td class="fill">[e.g. 26.13.1 / 4.x]</td></tr>
+      <tr><th>Docker</th><td class="fill">[version, running? yes/no]</td></tr>
+      <tr><th>Clean machine?</th><td class="fill">[fresh clone, no cached deps/.env: yes/no]</td></tr>
+      <tr><th>Branch / SHA</th><td class="fill">[branch @ sha]</td></tr>
+    </table>
+
+    <h2>3. Result</h2>
+    <table>
+      <tr><th>Command</th><td><code>yarn test:integration</code></td></tr>
+      <tr><th>Files</th><td class="fill">[passed / total]</td></tr>
+      <tr><th>Tests</th><td class="fill">[passed / failed / total]</td></tr>
+      <tr><th>Duration</th><td class="fill">[mm:ss]</td></tr>
+      <tr><th>Cleanup</th><td class="fill">[containers removed? yes/no]</td></tr>
+    </table>
+
+    <h3>Failing tests (leave empty if none)</h3>
+    <table>
+      <thead>
+        <tr><th>File</th><th>Test</th><th>Error (one line)</th></tr>
+      </thead>
+      <tr>
+        <td class="fill">[file]</td>
+        <td class="fill">[test name]</td>
+        <td class="fill">[error]</td>
+      </tr>
+    </table>
+
+    <h2>4. README gaps</h2>
+    <p class="meta">
+      Anything that stopped you, was wrong, or was missing. One row each.
+    </p>
+    <table>
+      <thead>
+        <tr><th>#</th><th>Step</th><th>Problem</th><th>Fix / workaround</th><th>Severity</th></tr>
+      </thead>
+      <tr>
+        <td>1</td>
+        <td class="fill">[README step]</td>
+        <td class="fill">[what went wrong]</td>
+        <td class="fill">[what you did]</td>
+        <td class="fill">[blocker / minor]</td>
+      </tr>
+    </table>
+
+    <h2>5. Reproduce</h2>
+<pre>git clone &lt;repo&gt; &amp;&amp; cd outline
+git checkout <span class="fill">[sha]</span>
+<span class="fill">[exact README commands you ran, in order]</span>
+yarn test:integration</pre>
+
+    <h2>6. Follow-ups</h2>
+    <p class="fill">
+      [Links to gap issues or PRs, or "none". Do not fix gaps in this report.]
+    </p>
+  </body>
+</html>
