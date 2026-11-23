@@ -1,4 +1,4 @@
-import { CollectionPermission, UserRole } from "@shared/types";
+import { CollectionPermission, TeamPreference, UserRole } from "@shared/types";
 import {
   Collection,
   GroupMembership,
@@ -1120,6 +1120,28 @@ describe("collection policy matrix", () => {
       }
     });
   }
+});
+
+describe("collection download", () => {
+  it("lets viewers and guests download only when the team allows it", async () => {
+    for (const viewersCanExport of [false, true]) {
+      const w = await buildWorld({
+        preferences: { [TeamPreference.ViewersCanExport]: viewersCanExport },
+      });
+      const c = await make(w, { permission: CollectionPermission.Read });
+      await memberOf(w.guest.id, c.id, CollectionPermission.Read);
+      for (const [who, user] of everyone(w)) {
+        const reloaded = await Collection.findByPk(c.id, { userId: user.id });
+        const allowed =
+          ["creator", "member", "admin"].includes(who) ||
+          (viewersCanExport && ["viewer", "guest"].includes(who));
+        expect([who, !!serialize(user, reloaded as never).download]).toEqual([
+          who,
+          allowed,
+        ]);
+      }
+    }
+  });
 });
 
 describe("team and share policy", () => {
