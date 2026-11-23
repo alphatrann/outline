@@ -1,4 +1,5 @@
-import { Share } from "@server/models";
+import { CollectionPermission } from "@shared/types";
+import { Share, UserMembership } from "@server/models";
 import {
   buildAdmin,
   buildCollection,
@@ -691,5 +692,300 @@ describe("#shares.sitemap (integration)", () => {
     const res = await server.get(`/api/shares.sitemap?id=${share.id}`);
     expect(res.status).toEqual(404);
     expect(await res.text()).not.toContain("<urlset");
+  });
+});
+
+describe("#shares.info presentation and lookup (integration)", () => {
+  async function setup() {
+    const team = await buildTeam();
+    const admin = await buildAdmin({ teamId: team.id });
+    const collection = await buildCollection({
+      teamId: team.id,
+      userId: admin.id,
+      permission: null,
+    });
+    const document = await buildDocument({
+      teamId: team.id,
+      userId: admin.id,
+      collectionId: collection.id,
+    });
+    return { team, admin, collection, document };
+  }
+
+  it("should present a public collection share without private fields", async () => {
+    const { team, admin, collection } = await setup();
+    const share = await buildShare({
+      teamId: team.id,
+      userId: admin.id,
+      documentId: null,
+      collectionId: collection.id,
+      showLastUpdated: false,
+      lastAccessedAt: new Date(),
+    });
+
+    const res = await server.post("/api/shares.info", {
+      body: { id: share.id },
+    });
+    const body = await res.json();
+
+    expect(res.status).toEqual(200);
+    expect(body.data.collection.id).toEqual(collection.id);
+    expect(body.data.collection.updatedAt).toBeUndefined();
+    expect(body.data.collection.permission).toBeUndefined();
+    expect(body.data.collection.sharing).toBeUndefined();
+    // Anonymous viewers are never treated as admins.
+    expect(body.data.shares[0].lastAccessedAt).toBeUndefined();
+  });
+
+  it("should present full detail to a member with access via membership", async () => {
+    const { team, admin, collection, document } = await setup();
+    const member = await buildUser({ teamId: team.id });
+    await UserMembership.create({
+      collectionId: collection.id,
+      userId: member.id,
+      permission: CollectionPermission.Read,
+      createdById: admin.id,
+    });
+    const collectionShare = await buildShare({
+      teamId: team.id,
+      userId: admin.id,
+      documentId: null,
+      collectionId: collection.id,
+      showLastUpdated: false,
+    });
+    const documentShare = await buildShare({
+      teamId: team.id,
+      userId: admin.id,
+      documentId: document.id,
+      showLastUpdated: false,
+    });
+
+    const colBody = await (
+      await server.post("/api/shares.info", member, {
+        body: { id: collectionShare.id },
+      })
+    ).json();
+    expect(colBody.data.collection.updatedAt).toBeDefined();
+    expect(colBody.data.collection.permission).toBeNull();
+    expect(colBody.data.collection.sharing).toBeDefined();
+
+    const docBody = await (
+      await server.post("/api/shares.info", member, {
+        body: { id: documentShare.id, documentId: document.id },
+      })
+    ).json();
+    expect(docBody.data.document.updatedAt).toBeDefined();
+
+    // A user without membership gets the public presentation.
+    const outsider = await buildUser({ teamId: team.id });
+    const outsiderBody = await (
+      await server.post("/api/shares.info", outsider, {
+        body: { id: collectionShare.id },
+      })
+    ).json();
+    expect(outsiderBody.data.collection.updatedAt).toBeUndefined();
+    expect(outsiderBody.data.collection.sharing).toBeUndefined();
+  });
+
+  it("should look up shares by documentId for an authenticated user", async () => {
+    const { team, admin, document } = await setup();
+    const share = await buildShare({
+      teamId: team.id,
+      userId: admin.id,
+      documentId: document.id,
+    });
+
+    const res = await server.post("/api/shares.info", admin, {
+      body: { documentId: document.id },
+    });
+    const body = await res.json();
+
+    expect(res.status).toEqual(200);
+    expect(body.data.shares.map((s: { id: string }) => s.id)).toContain(
+      share.id
+    );
+    expect(body.policies.length).toBeGreaterThan(0);
+  });
+
+  it("should return 204 when the document has no share", async () => {
+    const { admin, document } = await setup();
+
+    const res = await server.post("/api/shares.info", admin, {
+      body: { documentId: document.id },
+    });
+
+    expect(res.status).toEqual(204);
+  });
+
+  it("should require authentication when no share id is given", async () => {
+    const { document } = await setup();
+
+    const res = await server.post("/api/shares.info", {
+      body: { documentId: document.id },
+    });
+
+    expect(res.status).toEqual(401);
+  });
+});
+
+describe("#shares.sitemap base url (integration)", () => {
+  it("should use the team url when the share has no custom domain", async () => {
+    const team = await buildTeam();
+    const user = await buildUser({ teamId: team.id });
+    const collection = await buildCollection({
+      teamId: team.id,
+      userId: user.id,
+    });
+    await buildDocument({
+      teamId: team.id,
+      userId: user.id,
+      collectionId: collection.id,
+    });
+    const share = await buildShare({
+      teamId: team.id,
+      userId: user.id,
+      documentId: null,
+      collectionId: collection.id,
+      allowIndexing: true,
+    });
+
+    const text = await (
+      await server.get(`/api/shares.sitemap?id=${share.id}`)
+    ).text();
+
+    expect(text).toContain(`<loc>${team.url}/s/${share.id}/`);
+  });
+
+  it("should use the custom domain when the share has one", async () => {
+    const team = await buildTeam();
+    const user = await buildUser({ teamId: team.id });
+    const collection = await buildCollection({
+      teamId: team.id,
+      userId: user.id,
+    });
+    await buildDocument({
+      teamId: team.id,
+      userId: user.id,
+      collectionId: collection.id,
+    });
+    const share = await buildShare({
+      teamId: team.id,
+      userId: user.id,
+      documentId: null,
+      collectionId: collection.id,
+      allowIndexing: true,
+      domain: "docs.example.com",
+    });
+
+    const res = await server.get(`/api/shares.sitemap?id=${share.id}`);
+    const text = await res.text();
+
+    expect(res.status).toEqual(200);
+    expect(text).toContain("<loc>https://docs.example.com");
+    expect(text).not.toContain("/s/");
+  });
+});
+
+describe("#shares create/update/revoke details (integration)", () => {
+  async function setup() {
+    const team = await buildTeam();
+    const admin = await buildAdmin({ teamId: team.id });
+    const collection = await buildCollection({
+      teamId: team.id,
+      userId: admin.id,
+    });
+    const document = await buildDocument({
+      teamId: team.id,
+      userId: admin.id,
+      collectionId: collection.id,
+    });
+    return { team, admin, collection, document };
+  }
+
+  it("should not include child documents on an unpublished share by default", async () => {
+    const { admin, document } = await setup();
+
+    const res = await server.post("/api/shares.create", admin, {
+      body: { documentId: document.id },
+    });
+    const body = await res.json();
+
+    expect(res.status).toEqual(200);
+    expect(body.data.published).toEqual(false);
+    expect(body.data.includeChildDocuments).toEqual(false);
+  });
+
+  it("should allow an unpublished share even if the collection disallows sharing", async () => {
+    const { admin, collection, document } = await setup();
+    await collection.update({ sharing: false });
+
+    const res = await server.post("/api/shares.create", admin, {
+      body: { documentId: document.id },
+    });
+
+    expect(res.status).toEqual(200);
+  });
+
+  it("should deny creating a share for a document the user cannot read", async () => {
+    const { team, document, collection } = await setup();
+    await collection.update({ permission: null });
+    const outsider = await buildUser({ teamId: team.id });
+
+    const res = await server.post("/api/shares.create", outsider, {
+      body: { documentId: document.id },
+    });
+
+    expect(res.status).toEqual(403);
+    expect(await Share.count({ where: { documentId: document.id } })).toEqual(
+      0
+    );
+  });
+
+  it("should not enable child documents when unpublishing", async () => {
+    const { team, admin, document } = await setup();
+    const share = await buildShare({
+      teamId: team.id,
+      userId: admin.id,
+      documentId: document.id,
+      published: true,
+      includeChildDocuments: false,
+    });
+
+    const res = await server.post("/api/shares.update", admin, {
+      body: { id: share.id, published: false },
+    });
+    expect(res.status).toEqual(200);
+
+    const updated = await Share.findByPk(share.id, { rejectOnEmpty: true });
+    expect(updated.published).toEqual(false);
+    expect(updated.includeChildDocuments).toEqual(false);
+  });
+
+  it("should expose lastAccessedAt to admins in the update response", async () => {
+    const { team, admin, document } = await setup();
+    const share = await buildShare({
+      teamId: team.id,
+      userId: admin.id,
+      documentId: document.id,
+      lastAccessedAt: new Date(),
+    });
+
+    const body = await (
+      await server.post("/api/shares.update", admin, {
+        body: { id: share.id, showTOC: true },
+      })
+    ).json();
+
+    expect(body.data.lastAccessedAt).toBeDefined();
+  });
+
+  it("should 404 when revoking a share that does not exist", async () => {
+    const { admin } = await setup();
+
+    const res = await server.post("/api/shares.revoke", admin, {
+      body: { id: "7c4f2a8e-6b1d-4f3a-9c5e-1a2b3c4d5e6f" },
+    });
+
+    expect(res.status).toEqual(404);
   });
 });
