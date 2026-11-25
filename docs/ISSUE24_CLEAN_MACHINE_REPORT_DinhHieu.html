@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Issue #24 &middot; Clean-Machine Run Report &mdash; Dinh Hieu</title>
+    <style>
+      body {
+        font:
+          16px/1.55 system-ui,
+          -apple-system,
+          "Segoe UI",
+          sans-serif;
+        color: #1f2328;
+        max-width: 900px;
+        margin: 2rem auto;
+        padding: 0 1rem;
+      }
+      h1 {
+        font-size: 1.8rem;
+        margin: 0 0 0.25rem;
+      }
+      h2 {
+        font-size: 1.25rem;
+        margin: 2rem 0 0.4rem;
+        border-bottom: 1px solid #d0d7de;
+        padding-bottom: 0.3rem;
+      }
+      h3 {
+        font-size: 1.05rem;
+        margin: 1.4rem 0 0.4rem;
+      }
+      code,
+      pre {
+        background: #f6f8fa;
+        border-radius: 6px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      code {
+        padding: 0.12em 0.35em;
+        font-size: 0.9em;
+      }
+      pre {
+        padding: 0.9rem 1rem;
+        overflow-x: auto;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        font-size: 0.93rem;
+      }
+      th,
+      td {
+        border: 1px solid #d0d7de;
+        padding: 0.4rem 0.65rem;
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        background: #f6f8fa;
+        width: 28%;
+      }
+      thead th {
+        width: auto;
+      }
+      .meta {
+        color: #57606a;
+      }
+      .note {
+        background: #fff8c5;
+        border-left: 4px solid #d4a72c;
+        padding: 0.6rem 0.9rem;
+        border-radius: 4px;
+      }
+      .ok {
+        color: #1a7f37;
+        font-weight: 600;
+      }
+      .bad {
+        color: #cf222e;
+        font-weight: 600;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Issue #24 &middot; Clean-Machine Run Report</h1>
+    <p class="meta">
+      Deliverable H &middot; Owner Nguyen Dinh Hieu (gsb-b60) &middot; Date
+      2026-11-26 &middot; Commit <code>1cb531b54</code>
+    </p>
+
+    <h2>1. Verdict</h2>
+    <p>
+      <span class="ok">Ready</span> &mdash; a new person can clone the
+      repository and run the complete K16 integration suite from the README
+      alone on Windows 11. Five consecutive runs passed 7/7 files and 215/215
+      tests, with zero failures. Only minor documentation gaps remain; the
+      most visible one is the stale success example in the README.
+    </p>
+
+    <h2>2. Environment</h2>
+    <table>
+      <tr>
+        <th>OS</th>
+        <td>
+          Microsoft Windows 11 Home Single Language, version 10.0.26300,
+          64-bit
+        </td>
+      </tr>
+      <tr>
+        <th>Node / Yarn</th>
+        <td>Node 26.13.1 / Yarn 4.18.1 (Corepack enabled)</td>
+      </tr>
+      <tr>
+        <th>Docker</th>
+        <td>
+          Docker 29.8.0 (Docker Desktop 4.91.0), Linux engine;
+          <code>docker ps</code> succeeds
+        </td>
+      </tr>
+      <tr>
+        <th>Clean machine?</th>
+        <td>
+          Fresh clone at <code>1cb531b54</code>; no <code>.env</code>, no
+          <code>node_modules</code>, and no <code>build/server</code> before
+          install. The global Yarn cache and Docker images were warm (not a
+          fresh OS install).
+        </td>
+      </tr>
+      <tr>
+        <th>Install</th>
+        <td>
+          <code>yarn install --immutable</code> &mdash; exit 0. The first
+          attempt was interrupted by a host restart; the retry completed.
+        </td>
+      </tr>
+    </table>
+    <p class="meta">
+      Node 26 no longer bundles Corepack, so
+      <code>npm install -g corepack &amp;&amp; corepack enable</code> was
+      required, exactly as the README documents. Testcontainers used
+      disposable <code>postgres:17</code> and <code>redis:8</code> containers;
+      no local services or <code>.env</code> file were needed.
+    </p>
+
+    <h2>3. Result</h2>
+    <table>
+      <tr>
+        <th>Command</th>
+        <td><code>yarn test:integration</code></td>
+      </tr>
+      <tr>
+        <th>Files</th>
+        <td>7 passed / 7</td>
+      </tr>
+      <tr>
+        <th>Tests</th>
+        <td>215 passed / 0 failed / 215 total</td>
+      </tr>
+      <tr>
+        <th>Duration</th>
+        <td>
+          108.37&ndash;305.64 s (first run 05:20; later runs 01:51&ndash;02:01)
+        </td>
+      </tr>
+      <tr>
+        <th>Cleanup</th>
+        <td>
+          Final <code>docker ps -a</code> shows no
+          <code>testcontainers-*</code> containers. The Ryuk reaper container
+          stayed visible for about 10&ndash;12 minutes after the last run and
+          then removed itself.
+        </td>
+      </tr>
+    </table>
+
+    <h3>Repeated runs</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Run</th>
+          <th>Result</th>
+          <th>Vitest duration</th>
+          <th>Wall time</th>
+          <th>Failing tests</th>
+        </tr>
+      </thead>
+      <tr>
+        <td>1</td>
+        <td class="ok">215 / 215 pass</td>
+        <td>305.64 s</td>
+        <td>05:20</td>
+        <td>none</td>
+      </tr>
+      <tr>
+        <td>2</td>
+        <td class="ok">215 / 215 pass</td>
+        <td>113.61 s</td>
+        <td>01:57</td>
+        <td>none</td>
+      </tr>
+      <tr>
+        <td>3</td>
+        <td class="ok">215 / 215 pass</td>
+        <td>109.92 s</td>
+        <td>01:53</td>
+        <td>none</td>
+      </tr>
+      <tr>
+        <td>4</td>
+        <td class="ok">215 / 215 pass</td>
+        <td>117.80 s</td>
+        <td>02:01</td>
+        <td>none</td>
+      </tr>
+      <tr>
+        <td>5</td>
+        <td class="ok">215 / 215 pass</td>
+        <td>108.37 s</td>
+        <td>01:51</td>
+        <td>none</td>
+      </tr>
+    </table>
+    <p class="meta">
+      All five runs exited with status 0. The first run includes container
+      startup and the fresh migration pass; later runs are consistently under
+      about two minutes. Full logs are kept locally under
+      <code>logs/issue-24/</code> (git-ignored).
+    </p>
+
+    <h3>Suite breakdown (all 7 suites green)</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Test suite</th>
+          <th>Tests</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tr>
+        <td><code>server/routes/api/documents/documents.integration.test.ts</code></td>
+        <td>69 passed</td>
+        <td class="ok">PASS</td>
+      </tr>
+      <tr>
+        <td><code>server/routes/api/collections/collections.integration.test.ts</code></td>
+        <td>50 passed</td>
+        <td class="ok">PASS</td>
+      </tr>
+      <tr>
+        <td><code>server/routes/api/shares/shares.integration.test.ts</code></td>
+        <td>39 passed</td>
+        <td class="ok">PASS</td>
+      </tr>
+      <tr>
+        <td><code>server/policies/document.integration.test.ts</code></td>
+        <td>28 passed</td>
+        <td class="ok">PASS</td>
+      </tr>
+      <tr>
+        <td><code>server/policies/collection.integration.test.ts</code></td>
+        <td>23 passed</td>
+        <td class="ok">PASS</td>
+      </tr>
+      <tr>
+        <td><code>server/routes/api/revisions/revisions.integration.test.ts</code></td>
+        <td>4 passed</td>
+        <td class="ok">PASS</td>
+      </tr>
+      <tr>
+        <td><code>server/routes/api/users/users.integration.test.ts</code></td>
+        <td>2 passed</td>
+        <td class="ok">PASS</td>
+      </tr>
+    </table>
+
+    <h3>Failing tests</h3>
+    <p>None. The suite is fully green.</p>
+
+    <h2>4. README gaps</h2>
+    <p class="meta">
+      Nothing blocked the run. The rows below are documentation gaps found
+      while following the README from a clean clone.
+    </p>
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Step</th>
+          <th>Problem</th>
+          <th>Fix / workaround</th>
+          <th>Severity</th>
+        </tr>
+      </thead>
+      <tr>
+        <td>1</td>
+        <td><strong>What success looks like</strong></td>
+        <td>
+          The example still shows <code>5 files / 53 tests</code>; the suite
+          now runs <code>7 files / 215 tests</code>.
+        </td>
+        <td>
+          Tracked in
+          <a href="https://github.com/alphatrann/outline/issues/51">#51</a>;
+          update the example or make it generic.
+        </td>
+        <td>minor</td>
+      </tr>
+      <tr>
+        <td>2</td>
+        <td><code>yarn test:integration</code></td>
+        <td>
+          A <code>testcontainers-ryuk-*</code> container stays visible for
+          about 10&ndash;12 minutes after a run, although the README says
+          <code>docker ps</code> shows nothing afterwards.
+        </td>
+        <td>
+          The reaper removes it automatically; wait for it or document the
+          delay.
+        </td>
+        <td>minor</td>
+      </tr>
+      <tr>
+        <td>3</td>
+        <td><code>yarn test:integration</code></td>
+        <td>
+          Node 26 prints <code>ExperimentalWarning: localStorage ...</code>
+          and <code>DEP0190</code>; the README only documents the Vite
+          <code>configLoader</code> warning.
+        </td>
+        <td>
+          Harmless; the run exits 0. Optionally document them as expected
+          noise.
+        </td>
+        <td>minor</td>
+      </tr>
+    </table>
+
+    <h2>5. Reproduce</h2>
+    <pre>git clone https://github.com/alphatrann/outline.git outline-clean
+cd outline-clean
+git checkout 1cb531b54
+yarn install --immutable
+yarn test:integration   # repeat 5 times</pre>
+    <p class="meta">
+      Use Node 26.13.1 and enable Corepack first, as the README explains. No
+      local Postgres or Redis, no <code>.env</code>, and no
+      <code>yarn build:server</code> are required; only a running Docker
+      daemon.
+    </p>
+
+    <h2>6. Follow-ups</h2>
+    <p>
+      README gap:
+      <a href="https://github.com/alphatrann/outline/issues/51">#51</a>
+      (stale success example), assigned to T. No test failures or new issues
+      were found. Related work: #24 (Deliverable H), #46 (Windows
+      <code>requireDirectory</code> fix), #47 (initial 53-test report), #48
+      (route and policy expansion to 215 tests), #50 (previous clean-machine
+      report). Unit tests were out of scope for this deliverable.
+    </p>
+  </body>
+</html>
