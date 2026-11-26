@@ -109,9 +109,9 @@ yarn test:integration
 **What success looks like** — Vitest prints a summary and exits with status `0`:
 
 ```text
- Test Files  5 passed (5)
-      Tests  53 passed (53)
-   Duration  28.65s (transform 2.73s, setup 9.12s, import 1.75s, tests 12.17s)
+ Test Files  7 passed (7)
+      Tests  215 passed (215)
+   Duration  108.37s (transform 8.42s, setup 39.84s, import 7.05s, tests 48.22s, environment 1ms)
 ```
 
 The first run takes around six minutes because it pulls the `postgres:17` and `redis:8` images and migrates a fresh database; later runs are typically one to two minutes. Containers are cleaned up automatically, so `docker ps` shows nothing from the run afterwards. The `configLoader: 'native'` warning printed above the run is expected and harmless.
