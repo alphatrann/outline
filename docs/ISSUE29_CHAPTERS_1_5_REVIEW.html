@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Issue #29 · Rà soát Chương 1–5</title>
+    <style>
+      body {
+        font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+        color: #1f2328;
+        max-width: 960px;
+        margin: 2rem auto;
+        padding: 0 1rem;
+      }
+      h1 { font-size: 1.8rem; margin: 0 0 0.25rem; }
+      h2 { font-size: 1.25rem; margin: 2rem 0 0.4rem; border-bottom: 1px solid #d0d7de; padding-bottom: 0.3rem; }
+      h3 { font-size: 1.05rem; margin: 1.25rem 0 0.35rem; }
+      code, pre { background: #f6f8fa; border-radius: 6px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+      code { padding: 0.12em 0.35em; font-size: 0.9em; }
+      pre { padding: 0.9rem 1rem; overflow-x: auto; }
+      table { border-collapse: collapse; width: 100%; font-size: 0.94rem; }
+      th, td { border: 1px solid #d0d7de; padding: 0.45rem 0.65rem; text-align: left; vertical-align: top; }
+      th { background: #f6f8fa; width: 22%; }
+      .meta { color: #57606a; }
+      .note { background: #fff8c5; border-left: 4px solid #d4a72c; padding: 0.65rem 0.9rem; border-radius: 4px; }
+      .ok { color: #1a7f37; font-weight: 600; }
+      .high { color: #cf222e; font-weight: 600; }
+    </style>
+  </head>
+  <body>
+    <h1>Issue #29 · Guide rà soát Chương 1–5</h1>
+    <p class="meta">
+      Phạm vi: <code>BaoCao_KiemThu_Outline_K16_CuoiKy.docx</code>, Chương 1–5,
+      trang nội dung 1–21 · Rà soát đối chiếu repository và README · Không merge
+    </p>
+
+    <h2>Kết luận ngắn</h2>
+    <p>
+      Chương 1–5 phù hợp với repository về mặt tổng thể. Cần sửa ba điểm dưới đây
+      để báo cáo nhất quán hơn về khả năng tái lập và lịch sử kiểm thử. Các vấn đề
+      khác được phát hiện trong quá trình rà soát không nằm trong phạm vi PR này.
+    </p>
+
+    <h2>1. Làm rõ commit nền và commit tạo kết quả</h2>
+    <table>
+      <tr>
+        <th>Vị trí</th>
+        <td>Mục 1.3 và Bảng 5.1</td>
+      </tr>
+      <tr>
+        <th>Hiện trạng</th>
+        <td>
+          Báo cáo ghi phiên bản Outline được cố định tại <code>05ef55e</code>.
+          Đây là commit nền của mã nguồn Outline, trong khi bộ test, cấu hình CI
+          và các sửa đổi của nhóm được thêm ở những commit sau đó. Bằng chứng
+          chạy 215 test được ghi nhận tại commit <code>586624f8d</code>; repository
+          hiện tại đã tiến tới <code>679308141</code>.
+        </td>
+      </tr>
+      <tr>
+        <th>Cách sửa</th>
+        <td>
+          Đổi đoạn mô tả thành:
+          <blockquote>
+            <p>
+              <code>05ef55e</code> là commit nền của mã nguồn Outline được dùng
+              để bắt đầu đề tài. Các test, cấu hình CI và tài liệu của nhóm được
+              phát triển trên các commit tiếp theo. Bộ 215 integration test được
+              kiểm chứng trên các commit sau đó; kết quả CI được ghi nhận tại
+              <code>586624f8d</code>.
+            </p>
+          </blockquote>
+          Trong Bảng 5.1, thay “Phiên bản Outline: Cố định tại commit
+          <code>05ef55e</code>” bằng “Commit nền: <code>05ef55e</code>; commit
+          kiểm chứng bộ test: <code>586624f8d</code>”.
+        </td>
+      </tr>
+      <tr>
+        <th>Vì sao cần sửa</th>
+        <td>
+          Người đọc cần biết chính xác commit nào chứa bộ 215 test và có thể dùng
+          commit nào để tái lập kết quả. Nếu giữ cách viết hiện tại, người đọc có
+          thể hiểu nhầm rằng checkout <code>05ef55e</code> sẽ có sẵn toàn bộ bộ
+          test cuối cùng.
+        </td>
+      </tr>
+    </table>
+
+    <h2>2. Bổ sung Corepack vào quy trình máy sạch</h2>
+    <table>
+      <tr>
+        <th>Vị trí</th>
+        <td>Mục 5.3, trước lệnh <code>yarn install --immutable</code></td>
+      </tr>
+      <tr>
+        <th>Hiện trạng</th>
+        <td>
+          Mục 5.3 nói rằng trên máy sạch chỉ cần Node.js, Yarn và Docker. README
+          thực tế yêu cầu cài và bật Corepack khi dùng Node 26, vì Node 26 không
+          còn tích hợp sẵn Corepack.
+        </td>
+      </tr>
+      <tr>
+        <th>Cách sửa</th>
+        <td>
+          Bổ sung các lệnh:
+          <pre><code>npm install -g corepack
+corepack enable
+yarn install --immutable
+docker ps
+yarn test:integration</code></pre>
+          Có thể giữ hai lệnh đo bổ sung sau đó:
+          <pre><code>yarn test:integration:coverage
+yarn test:integration:mutation</code></pre>
+          Thêm câu: “Với Node.js 26, cần cài và bật Corepack trước để sử dụng
+          Yarn theo phiên bản được khóa trong repository.”
+        </td>
+      </tr>
+      <tr>
+        <th>Vì sao cần sửa</th>
+        <td>
+          Đây là bước cần thiết trên máy sạch. Nếu không ghi, người dùng có thể
+          không chạy được lệnh <code>yarn</code>, trái với mục tiêu mô tả đầy đủ
+          quy trình chạy lại theo README.
+        </td>
+      </tr>
+    </table>
+
+    <h2>3. Sửa mâu thuẫn về flaky test</h2>
+    <table>
+      <tr>
+        <th>Vị trí</th>
+        <td>Mục 3.2.5, đoạn mô tả bằng chứng khi test đạt</td>
+      </tr>
+      <tr>
+        <th>Hiện trạng</th>
+        <td>
+          Mục 3.2.5 viết “toàn bộ test đạt trong nhiều lần chạy liên tiếp, không
+          có flaky test”, nhưng Bảng 3.5 và mục 6.6.2 ghi rõ nhóm đã phát hiện và
+          sửa flaky test liên quan đến thời điểm background worker xử lý.
+        </td>
+      </tr>
+      <tr>
+        <th>Cách sửa</th>
+        <td>
+          Thay câu hiện tại bằng:
+          <blockquote>
+            <p>
+              Trong quá trình kiểm thử, nhóm đã phát hiện và sửa một flaky test
+              liên quan đến thời điểm xử lý background job. Sau khi sửa, các lần
+              chạy kiểm chứng liên tiếp đều đạt và không còn flaky test đã biết.
+            </p>
+          </blockquote>
+          Không cần thay đổi nội dung chính của Bảng 3.6. Phân loại hiện tại vẫn
+          phù hợp: duplicate revision có Severity thấp/Priority thấp; flaky test
+          có Severity thấp/Priority cao.
+        </td>
+      </tr>
+      <tr>
+        <th>Vì sao cần sửa</th>
+        <td>
+          Cách viết mới phân biệt được flaky test từng tồn tại trong quá trình
+          kiểm thử với trạng thái sau khi đã sửa, đồng thời thống nhất mục 3.2.5
+          với Bảng 3.5 và mục 6.6.2.
+        </td>
+      </tr>
+    </table>
+
+    <h2>Đối chiếu đã thực hiện</h2>
+    <ul>
+      <li><code>README.md</code>: yêu cầu Corepack trên Node 26 và quy trình chạy integration test.</li>
+      <li><code>package.json</code>, <code>.nvmrc</code>: phiên bản Yarn/Node của repository.</li>
+      <li><code>vitest.config.ts</code>, <code>server/test/containers.ts</code> và <code>server/test/cleanup.ts</code>: cách chạy và cô lập test.</li>
+      <li><code>docs/ISSUE24_CLEAN_MACHINE_REPORT.html</code>: bằng chứng 215/215 tại commit <code>586624f8d</code>.</li>
+      <li><code>docs/ISSUE24_CLEAN_MACHINE_REPORT_DinhHieu.html</code>: xác nhận Corepack là bước cần thiết với Node 26.</li>
+      <li><code>docs/ISSUE26_ANOMALY_REPORT.html</code> và mục 6.6.2: lịch sử flaky test và cách xử lý.</li>
+    </ul>
+
+    <div class="note">
+      <strong>Giới hạn PR:</strong> PR này chỉ thêm guide rà soát cho ba điểm ưu tiên
+      nêu trên. Không chỉnh trực tiếp file Word, không thay đổi mã nguồn và không
+      xử lý các vấn đề khác của Chương 4 hoặc Chương 6–7.
+    </div>
+  </body>
+</html>
